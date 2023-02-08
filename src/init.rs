@@ -42,7 +42,7 @@ pub fn do_init(force: bool) {
 
     // make default configuration to the directory
     print!("\tCreating configurations on '{}'...", conf_path.to_str().unwrap());
-    match fs::File::create(conf_path) {
+    match fs::File::create(&conf_path) {
         Ok(mut file) => {
             match file.write_all(DEFAULT_CONF_YAML.as_bytes()) {
                 Ok(_) => println!("\t{}", style("[  OK  ]").green()),
@@ -59,6 +59,9 @@ pub fn do_init(force: bool) {
             process::exit(1);
         }
     }
+
+    println!("\nYou must edit configurations on '{}'",
+           style(conf_path.to_str().unwrap()).cyan());
 }
 
 const DEFAULT_CONF_YAML: &str = r#"default_path:
