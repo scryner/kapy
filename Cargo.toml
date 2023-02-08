@@ -9,7 +9,10 @@ edition = "2021"
 anyhow = "1.0.69"
 byteorder = "1.4.3"
 clap = { version = "4.1.4", features = ["derive"] }
+console = "0.15.5"
+google-drive = "0.5.1"
 home = "0.5.4"
+indicatif = "0.17.3"
 magick_rust = "0.17.0"
 regex = "1.7.1"
 serde = { version = "1.0.152", features = ["derive"] }

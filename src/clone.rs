@@ -1,6 +1,7 @@
+use anyhow::{anyhow, Result};
 use crate::config::Config;
 
-pub fn clone(conf: Config) -> Result<CloneStatistics, String> {
+pub fn do_clone(conf: Config) {
     let mut statistics: CloneStatistics;
 
     // traverse 'FROM' directory

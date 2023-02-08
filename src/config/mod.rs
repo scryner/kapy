@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use serde::Deserialize;
+use anyhow::anyhow;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -207,6 +208,20 @@ pub enum Error {
     Parse(String),
 }
 
+pub fn default_config_path() -> anyhow::Result<(PathBuf, PathBuf)> {
+    let home_dir = match home::home_dir() {
+        Some(dir) => dir,
+        None => {
+            return Err(anyhow!("Failed to get home directory"));
+        }
+    };
+
+    let dir = home_dir.join(".kapy");
+    let config_file = dir.join("config.yaml");
+
+    Ok((dir, config_file))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,7 +241,8 @@ policies:
   command:
     resize: 36m # resize image to 36m pixels
     quality: 92%
-    format: heic"#;
+    format: heic
+"#;
 
         let conf = Config::build(String::from(yaml))
             .expect("Failed to deserialize from string");
