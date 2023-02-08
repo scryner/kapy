@@ -12,7 +12,7 @@ pub fn do_init(force: bool) {
 
     // get default config_path
     let (conf_dir, conf_path) = match config::default_config_path() {
-        Ok((dir, path)) => (dir, path),
+        Ok((dir, path, _)) => (dir, path),
         Err(e) => {
             eprintln!("Failed to get default config path: {}", e.to_string());
             process::exit(1);
@@ -64,7 +64,7 @@ pub fn do_init(force: bool) {
            style(conf_path.to_str().unwrap()).cyan());
 }
 
-const DEFAULT_CONF_YAML: &str = r#"default_path:
+const DEFAULT_CONF_YAML: &str = r#"import:
   from: YOUR_ORIGIN_PATH
   to: YOUR_TARGET_PATH
 policies:

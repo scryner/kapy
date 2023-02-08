@@ -14,8 +14,12 @@ use config::Config;
 #[command(about = "A copy utility for large images taken by cameras", long_about = None)]
 struct Cli {
     /// Set a custom config file
-    #[arg(short, long, value_name = "FILE", global = true)]
+    #[arg(short, long, value_name = "CONF_PATH", global = true)]
     config: Option<PathBuf>,
+
+    /// Set google API credentials path
+    #[arg(long, value_name = "CRED_PATH", global = true)]
+    cred: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -45,31 +49,43 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
+    // do initialization if 'init' command
     if let Commands::Init { force } = cli.command {
         return init::do_init(force);
     }
 
-    let default_config_path = match config::default_config_path() {
-        Ok((_, p)) => p,
+    let (default_config_path, default_cred_path) = match config::default_config_path() {
+        Ok((_, conf, cred)) => (conf, cred),
         Err(e) => {
             eprintln!("Failed to get default config path: {}", e.to_string());
             process::exit(1);
         }
     };
 
+    // read config
     let conf_path = cli.config
         .as_deref()
         .unwrap_or(&default_config_path);
 
-    let conf = Config::build_from_file(conf_path).unwrap_or_else(|err| {
+    let mut conf = Config::build_from_file(conf_path).unwrap_or_else(|err| {
         eprintln!("Failed to build configuration: {:?}", err);
         eprintln!("You should run 'init' first");
         process::exit(1);
     });
 
+    let cred = cli.cred.unwrap_or(default_cred_path);
+
     match &cli.command {
         Commands::Clone { from, to } => {
-            return clone::do_clone(conf);
+            if let Some(from) = from {
+                conf.set_import_from(from.clone());
+            }
+
+            if let Some(to) = to {
+                conf.set_import_to(to.clone());
+            }
+
+            return clone::do_clone(conf, cred);
         }
         _ => {
             // never reached

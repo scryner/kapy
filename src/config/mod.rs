@@ -8,7 +8,7 @@ use anyhow::anyhow;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    default_path: DefaultPath,
+    import: ImportPath,
     policies: Vec<Policy>,
 
     #[serde(skip_deserializing)]
@@ -16,7 +16,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct DefaultPath {
+pub struct ImportPath{
     from: PathBuf,
     to: PathBuf,
 }
@@ -186,6 +186,14 @@ impl Config {
         }
     }
 
+    pub fn set_import_from(&mut self, path: PathBuf) {
+        self.import.from = path;
+    }
+
+    pub fn set_import_to(&mut self, path: PathBuf) {
+        self.import.to = path;
+    }
+
     pub fn command(&self, rate: i8) -> &Command {
         self.commands.get(&rate).unwrap_or(&Command::ByPass)
     }
@@ -208,7 +216,7 @@ pub enum Error {
     Parse(String),
 }
 
-pub fn default_config_path() -> anyhow::Result<(PathBuf, PathBuf)> {
+pub fn default_config_path() -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
     let home_dir = match home::home_dir() {
         Some(dir) => dir,
         None => {
@@ -218,8 +226,9 @@ pub fn default_config_path() -> anyhow::Result<(PathBuf, PathBuf)> {
 
     let dir = home_dir.join(".kapy");
     let config_file = dir.join("config.yaml");
+    let cred_file = dir.join("cred.json");
 
-    Ok((dir, config_file))
+    Ok((dir, config_file, cred_file))
 }
 
 #[cfg(test)]
@@ -228,7 +237,7 @@ mod tests {
 
     #[test]
     fn build_from_str() {
-        let yaml = r#"default_path:
+        let yaml = r#"import:
   from: /Volumes/Untitled/DCIM/108HASBL
   to: ~/images
 policies:

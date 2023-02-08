@@ -1,7 +1,8 @@
+use std::path::PathBuf;
 use anyhow::{anyhow, Result};
 use crate::config::Config;
 
-pub fn do_clone(conf: Config) {
+pub fn do_clone(conf: Config, cred_path: PathBuf) {
     let mut statistics: CloneStatistics;
 
     // traverse 'FROM' directory
