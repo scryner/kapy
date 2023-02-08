@@ -2,12 +2,10 @@ pub mod image;
 pub mod gps;
 
 use std::sync::Once;
-use std::ffi::{CStr, CString, c_void};
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
-use magick_rust::{magick_wand_genesis, MagickWand, bindings};
-use regex::Regex;
+use magick_rust::{magick_wand_genesis, MagickWand};
 use crate::config::Config;
 
 static START: Once = Once::new();
