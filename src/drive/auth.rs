@@ -3,20 +3,19 @@ use std::io::{BufRead, BufReader, Write};
 use std::ops::Add;
 use std::rc::Rc;
 use std::time::SystemTime;
+use std::net::TcpListener;
+
 use anyhow::{anyhow, Result};
 use oauth2::{AuthUrl, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl, TokenUrl, Scope, PkceCodeChallenge, TokenResponse, AccessToken, AuthorizationCode, basic, revocation, RefreshToken};
 use oauth2::{basic::BasicClient, ClientId};
 use oauth2::basic::BasicTokenResponse;
 use oauth2::reqwest::http_client;
-use std::net::TcpListener;
 use url::Url;
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
 const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
-
-const DEFAULT_LISTEN_PORT: i32 = 18080;
 
 struct Token {
     token_response: BasicTokenResponse,
@@ -58,7 +57,7 @@ impl GoogleAuthenticator {
         Self {
             client,
             token: Rc::new(RefCell::new(None)),
-            listen_port: DEFAULT_LISTEN_PORT,
+            listen_port,
         }
     }
 
