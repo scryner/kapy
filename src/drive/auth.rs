@@ -299,21 +299,14 @@ mod tests {
 
     #[test]
     fn google_oauth2() {
-        let client_id = env::var("CLIENT_ID").expect("Missing the CLIENT_ID environment variable.");
-        let client_secret = env::var("CLIENT_SECRET").expect("Missing the CLIENT_SECRET environment variable.");
+        let auth = GoogleAuthenticator::new_from_env().unwrap();
 
-        let auth = GoogleAuthenticator::new(client_id.as_str(), client_secret.as_str(), 18080);
+        // get access token with login
+        let ac = auth.access_token().unwrap();
+        println!("Access token from login: {}", ac.secret());
 
-        {
-            // get access token with login
-            let ac = auth.access_token().unwrap();
-            println!("Access token from login: {}", ac.secret());
-        }
-
-        // {
-        //     // get access token using refresh token
-        //     let ac = auth.refresh_token().unwrap();
-        //     println!("Access token from refresh token: {}", ac.secret());
-        // }
+        // get access token using refresh token
+        let ac = auth.refresh_token().unwrap();
+        println!("Access token from refresh token: {}", ac.secret());
     }
 }
