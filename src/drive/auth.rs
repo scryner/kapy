@@ -4,6 +4,7 @@ use std::ops::Add;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::net::TcpListener;
+use std::env;
 
 use anyhow::{anyhow, Result};
 use oauth2::{AuthUrl, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl, TokenUrl, Scope, PkceCodeChallenge, TokenResponse, AccessToken, AuthorizationCode, basic, revocation, RefreshToken};
@@ -16,6 +17,12 @@ const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
 const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
+
+const ENV_CLIENT_ID: &str = "CLIENT_ID";
+const ENV_CLIENT_SECRET: &str = "CLIENT_SECRET";
+const ENV_LISTEN_PORT: &str = "LISTEN_PORT";
+
+const DEFAULT_LISTEN_PORT: i32 = 18080;
 
 struct Token {
     token_response: BasicTokenResponse,
@@ -59,6 +66,16 @@ impl GoogleAuthenticator {
             token: Rc::new(RefCell::new(None)),
             listen_port,
         }
+    }
+
+    pub fn new_from_env() -> Result<Self> {
+        let client_id = env::var(ENV_CLIENT_ID)?;
+        let client_secret = env::var(ENV_CLIENT_SECRET)?;
+        let listen_port = env::var(ENV_LISTEN_PORT).unwrap_or(String::from(""));
+
+        let listen_port = listen_port.parse::<i32>().unwrap_or(DEFAULT_LISTEN_PORT);
+
+        Ok(Self::new(&client_id, &client_secret, listen_port))
     }
 
     pub fn listen_port(mut self, port: i32) -> Self {
@@ -293,10 +310,10 @@ mod tests {
             println!("Access token from login: {}", ac.secret());
         }
 
-        {
-            // get access token using refresh token
-            let ac = auth.refresh_token().unwrap();
-            println!("Access token from refresh token: {}", ac.secret());
-        }
+        // {
+        //     // get access token using refresh token
+        //     let ac = auth.refresh_token().unwrap();
+        //     println!("Access token from refresh token: {}", ac.secret());
+        // }
     }
 }
