@@ -1,8 +1,6 @@
-use std::path::PathBuf;
 use std::{fs, process};
 use std::io::Write;
 
-use anyhow::{anyhow, Result};
 use console::style;
 
 use crate::config;
