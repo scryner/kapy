@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Add;
 use std::rc::Rc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::net::TcpListener;
 use std::env;
 
@@ -11,6 +11,7 @@ use oauth2::{AuthUrl, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl, Token
 use oauth2::{basic::BasicClient, ClientId};
 use oauth2::basic::BasicTokenResponse;
 use oauth2::reqwest::http_client;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -24,9 +25,23 @@ const ENV_LISTEN_PORT: &str = "LISTEN_PORT";
 
 const DEFAULT_LISTEN_PORT: i32 = 18080;
 
-struct Token {
+#[derive(Serialize, Deserialize)]
+pub struct Token {
     token_response: BasicTokenResponse,
-    created_at: SystemTime,
+    created_at: u64,
+}
+
+impl Token {
+    fn new(token_response: BasicTokenResponse, created_at: SystemTime) -> Self {
+        Self{
+            token_response,
+            created_at: created_at.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        }
+    }
+
+    fn created_at(&self) -> SystemTime {
+        UNIX_EPOCH + Duration::from_secs(self.created_at)
+    }
 }
 
 type Client = oauth2::Client<basic::BasicErrorResponse, BasicTokenResponse, basic::BasicTokenType, basic::BasicTokenIntrospectionResponse, revocation::StandardRevocableToken, basic::BasicRevocationErrorResponse>;
@@ -60,7 +75,6 @@ impl GoogleAuthenticator {
             .set_redirect_uri(redirect_url)
             .set_revocation_uri(revocation_url.clone());
 
-
         Self {
             client,
             token: Rc::new(RefCell::new(None)),
@@ -93,7 +107,7 @@ impl GoogleAuthenticator {
             if let Some(t) = token.as_ref() {
                 // check access token expiration
                 let now = SystemTime::now();
-                let expires_at = t.created_at.add(t.token_response.expires_in().unwrap());
+                let expires_at = t.created_at().add(t.token_response.expires_in().unwrap());
 
                 if now > expires_at {
                     refresh = true;
@@ -205,10 +219,7 @@ impl GoogleAuthenticator {
         let mut t = RefCell::borrow_mut(&t);
         let now = SystemTime::now();
 
-        *t = Some(Token {
-            token_response,
-            created_at: now,
-        });
+        *t = Some(Token::new(token_response, now));
     }
 }
 
@@ -296,6 +307,9 @@ fn serve_redirect_oauth2(listen_port: i32) -> Result<(AuthorizationCode, CsrfTok
 mod tests {
     use super::*;
     use std::env;
+    use oauth2::basic::BasicTokenType;
+    use oauth2::EmptyExtraTokenFields;
+    use crate::drive::helper::FileCredentials;
 
     #[test]
     fn google_oauth2() {
@@ -308,5 +322,24 @@ mod tests {
         // get access token using refresh token
         let ac = auth.refresh_token().unwrap();
         println!("Access token from refresh token: {}", ac.secret());
+    }
+
+    #[test]
+    fn marshal_and_unmarshal_token() {
+        let token_response =
+            BasicTokenResponse::new(AccessToken::new(String::from("access_token")), BasicTokenType::Bearer, EmptyExtraTokenFields{});
+
+        let token = Token::new(token_response, SystemTime::now());
+
+        // marshal token
+        let marshaled = FileCredentials::marshal(&token).unwrap();
+        println!("marshaled = {}", marshaled);
+
+        // unmarshal token
+        let unmarshaled_token = FileCredentials::unmarshal(marshaled.into_bytes()).unwrap();
+
+        // comparison values
+        assert_eq!(token.token_response.access_token().secret(),
+                   unmarshaled_token.token_response.access_token().secret());
     }
 }

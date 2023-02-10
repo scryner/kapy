@@ -1,4 +1,5 @@
 mod auth;
+mod helper;
 
 use std::collections::HashMap;
 use anyhow::{anyhow, Result};
