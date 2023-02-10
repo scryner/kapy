@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 use std::io::{BufRead, BufReader, Write};
-use std::ops::Add;
+use std::ops::{Add, Deref};
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::net::TcpListener;
 use std::env;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use oauth2::{AuthUrl, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl, TokenUrl, Scope, PkceCodeChallenge, TokenResponse, AccessToken, AuthorizationCode, basic, revocation, RefreshToken};
@@ -13,6 +14,9 @@ use oauth2::basic::BasicTokenResponse;
 use oauth2::reqwest::http_client;
 use serde::{Deserialize, Serialize};
 use url::Url;
+use crate::config;
+use crate::drive::helper;
+use crate::drive::helper::FileCredentials;
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
@@ -22,6 +26,7 @@ const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 const ENV_CLIENT_ID: &str = "CLIENT_ID";
 const ENV_CLIENT_SECRET: &str = "CLIENT_SECRET";
 const ENV_LISTEN_PORT: &str = "LISTEN_PORT";
+const ENV_CRED_PATH: &str = "CRED_PATH";
 
 const DEFAULT_LISTEN_PORT: i32 = 18080;
 
@@ -33,7 +38,7 @@ pub struct Token {
 
 impl Token {
     fn new(token_response: BasicTokenResponse, created_at: SystemTime) -> Self {
-        Self{
+        Self {
             token_response,
             created_at: created_at.duration_since(UNIX_EPOCH).unwrap().as_secs(),
         }
@@ -49,12 +54,12 @@ type Client = oauth2::Client<basic::BasicErrorResponse, BasicTokenResponse, basi
 pub struct GoogleAuthenticator {
     client: Client,
     token: Rc<RefCell<Option<Token>>>,
-
+    cred_path: Rc<RefCell<Option<PathBuf>>>,
     listen_port: i32,
 }
 
 impl GoogleAuthenticator {
-    pub fn new(client_id: &str, client_secret: &str, listen_port: i32) -> Self {
+    pub fn new(client_id: &str, client_secret: &str, listen_port: i32, cred_path: &Path) -> Self {
         let client_id = ClientId::new(client_id.to_string());
         let client_secret = ClientSecret::new(client_secret.to_string());
 
@@ -66,6 +71,7 @@ impl GoogleAuthenticator {
             format!("http://127.0.0.1:{}", listen_port))
             .unwrap();
 
+        // create a http client
         let client = BasicClient::new(
             client_id.clone(),
             Some(client_secret.clone()),
@@ -75,9 +81,16 @@ impl GoogleAuthenticator {
             .set_redirect_uri(redirect_url)
             .set_revocation_uri(revocation_url.clone());
 
+        // try to read cred from file
+        let mut token = None;
+        if let Ok(t) = FileCredentials::read_file(&cred_path) {
+            token = Some(t);
+        }
+
         Self {
             client,
-            token: Rc::new(RefCell::new(None)),
+            token: Rc::new(RefCell::new(token)),
+            cred_path: Rc::new(RefCell::new(None)),
             listen_port,
         }
     }
@@ -85,11 +98,23 @@ impl GoogleAuthenticator {
     pub fn new_from_env() -> Result<Self> {
         let client_id = env::var(ENV_CLIENT_ID)?;
         let client_secret = env::var(ENV_CLIENT_SECRET)?;
-        let listen_port = env::var(ENV_LISTEN_PORT).unwrap_or(String::from(""));
 
+        let listen_port = env::var(ENV_LISTEN_PORT).unwrap_or(String::from(""));
         let listen_port = listen_port.parse::<i32>().unwrap_or(DEFAULT_LISTEN_PORT);
 
-        Ok(Self::new(&client_id, &client_secret, listen_port))
+        let default_path = config::default_path();
+        let default_cred_path = default_path.cred_path();
+
+        let cred_path = match env::var(ENV_CRED_PATH) {
+            Ok(s) => {
+                PathBuf::from(s)
+            }
+            _ => {
+                default_cred_path.to_path_buf()
+            }
+        };
+
+        Ok(Self::new(&client_id, &client_secret, listen_port, &cred_path))
     }
 
     pub fn listen_port(mut self, port: i32) -> Self {
@@ -219,7 +244,24 @@ impl GoogleAuthenticator {
         let mut t = RefCell::borrow_mut(&t);
         let now = SystemTime::now();
 
-        *t = Some(Token::new(token_response, now));
+        // make token
+        let token = Token::new(token_response, now);
+
+        // write to cred path
+        let cred_path = Rc::clone(&self.cred_path);
+        let cred_path = RefCell::borrow(&cred_path);
+
+        match cred_path.deref() {
+            Some(p) => {
+                if let Err(e) = FileCredentials::write_file(&token, &p) {
+                    eprintln!("Failed to write cred file: {}", e);
+                }
+            }
+            None => ()
+        }
+
+        // set token
+        *t = Some(token);
     }
 }
 
@@ -327,7 +369,7 @@ mod tests {
     #[test]
     fn marshal_and_unmarshal_token() {
         let token_response =
-            BasicTokenResponse::new(AccessToken::new(String::from("access_token")), BasicTokenType::Bearer, EmptyExtraTokenFields{});
+            BasicTokenResponse::new(AccessToken::new(String::from("access_token")), BasicTokenType::Bearer, EmptyExtraTokenFields {});
 
         let token = Token::new(token_response, SystemTime::now());
 

@@ -54,18 +54,14 @@ fn main() {
         return init::do_init(force);
     }
 
-    let (default_config_path, default_cred_path) = match config::default_config_path() {
-        Ok((_, conf, cred)) => (conf, cred),
-        Err(e) => {
-            eprintln!("Failed to get default config path: {}", e.to_string());
-            process::exit(1);
-        }
-    };
+    let default_path = config::default_path();
+    let default_config_path = default_path.config_path();
+    let default_cred_path = default_path.cred_path();
 
     // read config
     let conf_path = cli.config
         .as_deref()
-        .unwrap_or(&default_config_path);
+        .unwrap_or(default_config_path.as_ref());
 
     let mut conf = Config::build_from_file(conf_path).unwrap_or_else(|err| {
         eprintln!("Failed to build configuration: {:?}", err);
@@ -73,7 +69,7 @@ fn main() {
         process::exit(1);
     });
 
-    let cred = cli.cred.unwrap_or(default_cred_path);
+    let cred_path = cli.cred.as_deref().unwrap_or(default_cred_path.as_ref());
 
     match &cli.command {
         Commands::Clone { from, to } => {
@@ -85,7 +81,7 @@ fn main() {
                 conf.set_import_to(to.clone());
             }
 
-            return clone::do_clone(conf, cred);
+            return clone::do_clone(conf, cred_path);
         }
         _ => {
             // never reached

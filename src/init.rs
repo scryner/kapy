@@ -9,23 +9,20 @@ pub fn do_init(force: bool) {
     println!("Initializing kapy...");
 
     // get default config_path
-    let (conf_dir, conf_path) = match config::default_config_path() {
-        Ok((dir, path, _)) => (dir, path),
-        Err(e) => {
-            eprintln!("Failed to get default config path: {}", e.to_string());
-            process::exit(1);
-        }
-    };
+    let default_path = config::default_path();
+
+    let app_home = default_path.app_home();
+    let conf_path = default_path.config_path();
 
     // check configuration file is already existed
-    if fs::metadata(&conf_path).is_ok() && !force {
-        println!("Already initialized, config is on '{}'", conf_path.to_str().unwrap());
+    if fs::metadata(conf_path.as_ref()).is_ok() && !force {
+        println!("Already initialized, config is on '{:?}'", conf_path);
         process::exit(0);
     }
 
     // create kapy home directory
-    print!("\tCreating kapy home directory '{}'...", conf_dir.to_str().unwrap());
-    match fs::create_dir(conf_dir) {
+    print!("\tCreating kapy home directory '{:?}'...", app_home.as_os_str());
+    match fs::create_dir(app_home.as_ref()){
         Ok(()) => println!("\t{}", style("[  OK  ]").green()),
         Err(e) => {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -39,8 +36,8 @@ pub fn do_init(force: bool) {
     }
 
     // make default configuration to the directory
-    print!("\tCreating configurations on '{}'...", conf_path.to_str().unwrap());
-    match fs::File::create(&conf_path) {
+    print!("\tCreating configurations on '{:?}'...", conf_path);
+    match fs::File::create(conf_path.as_ref()) {
         Ok(mut file) => {
             match file.write_all(DEFAULT_CONF_YAML.as_bytes()) {
                 Ok(_) => println!("\t{}", style("[  OK  ]").green()),

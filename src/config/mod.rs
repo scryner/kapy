@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use regex::Regex;
 use serde::Deserialize;
-use anyhow::anyhow;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -216,19 +216,45 @@ pub enum Error {
     Parse(String),
 }
 
-pub fn default_config_path() -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
-    let home_dir = match home::home_dir() {
-        Some(dir) => dir,
-        None => {
-            return Err(anyhow!("Failed to get home directory"));
-        }
-    };
+#[derive(Debug)]
+pub struct ConfigPath {
+    app_home: Rc<Box<Path>>,
+    config_path: Rc<Box<Path>>,
+    app_secret_path: Rc<Box<Path>>,
+    cred_path: Rc<Box<Path>>,
+}
 
-    let dir = home_dir.join(".kapy");
-    let config_file = dir.join("config.yaml");
-    let cred_file = dir.join("cred.json");
+impl ConfigPath {
+    pub fn app_home(&self) -> Rc<Box<Path>> {
+        Rc::clone(&self.app_home)
+    }
 
-    Ok((dir, config_file, cred_file))
+    pub fn config_path(&self) -> Rc<Box<Path>> {
+        Rc::clone(&self.config_path)
+    }
+
+    pub fn app_secret_path(&self) -> Rc<Box<Path>> {
+        Rc::clone(&self.app_secret_path)
+    }
+
+    pub fn cred_path(&self) -> Rc<Box<Path>> {
+        Rc::clone(&self.cred_path)
+    }
+}
+
+pub fn default_path() -> ConfigPath {
+    let home_dir = home::home_dir().unwrap();
+    let app_home = home_dir.join(".kapy");
+    let config_path = app_home.join("config.yaml");
+    let app_secret_path = app_home.join("app_secret.yaml");
+    let cred_path = app_home.join(".cred");
+
+    ConfigPath {
+        app_home: Rc::new(app_home.into_boxed_path()),
+        config_path: Rc::new(config_path.into_boxed_path()),
+        app_secret_path: Rc::new(app_secret_path.into_boxed_path()),
+        cred_path: Rc::new(cred_path.into_boxed_path()),
+    }
 }
 
 #[cfg(test)]
