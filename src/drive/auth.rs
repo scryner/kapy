@@ -30,7 +30,7 @@ const ENV_CRED_PATH: &str = "CRED_PATH";
 
 const DEFAULT_LISTEN_PORT: i32 = 18080;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Token {
     token_response: BasicTokenResponse,
     created_at: u64,
@@ -54,7 +54,7 @@ type Client = oauth2::Client<basic::BasicErrorResponse, BasicTokenResponse, basi
 pub struct GoogleAuthenticator {
     client: Client,
     token: Rc<RefCell<Option<Token>>>,
-    cred_path: Rc<RefCell<Option<PathBuf>>>,
+    cred_path: Rc<RefCell<PathBuf>>,
     listen_port: i32,
 }
 
@@ -90,7 +90,7 @@ impl GoogleAuthenticator {
         Self {
             client,
             token: Rc::new(RefCell::new(token)),
-            cred_path: Rc::new(RefCell::new(None)),
+            cred_path: Rc::new(RefCell::new(cred_path.to_path_buf())),
             listen_port,
         }
     }
@@ -175,8 +175,10 @@ impl GoogleAuthenticator {
                     .request(http_client);
 
                 match token_response {
-                    Ok(token_response) => {
+                    Ok(mut token_response) => {
                         let ac = token_response.access_token().clone();
+                        token_response.set_refresh_token(Some(refresh_token));  // set refresh token, because current token_response was missed it
+
                         self.set_token(token_response);
 
                         Ok(ac)
@@ -187,7 +189,7 @@ impl GoogleAuthenticator {
                 }
             }
             None => {
-                Err(anyhow!("never reached!: token is not set"))
+                Err(anyhow!("never reached!: refresh token is missing"))
             }
         }
     }
@@ -223,6 +225,7 @@ impl GoogleAuthenticator {
 
                 match token_response {
                     Ok(token_response) => {
+                        println!("{:#?}", token_response);  // TODO: remove it
                         let ac = token_response.access_token().clone();
                         self.set_token(token_response);
 
@@ -244,6 +247,8 @@ impl GoogleAuthenticator {
         let mut t = RefCell::borrow_mut(&t);
         let now = SystemTime::now();
 
+        println!("{:#?}", token_response); // TODO: remove
+
         // make token
         let token = Token::new(token_response, now);
 
@@ -251,13 +256,8 @@ impl GoogleAuthenticator {
         let cred_path = Rc::clone(&self.cred_path);
         let cred_path = RefCell::borrow(&cred_path);
 
-        match cred_path.deref() {
-            Some(p) => {
-                if let Err(e) = FileCredentials::write_file(&token, &p) {
-                    eprintln!("Failed to write cred file: {}", e);
-                }
-            }
-            None => ()
+        if let Err(e) = FileCredentials::write_file(&token, cred_path.as_path()) {
+            eprintln!("Failed to write cred file: {}", e);
         }
 
         // set token
