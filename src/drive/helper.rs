@@ -4,8 +4,7 @@ use std::io::{BufWriter, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use base64::{{Engine as _, engine::general_purpose}};
-use anyhow::{anyhow, Result};
-use oauth2::basic::BasicTokenResponse;
+use anyhow::Result;
 use crate::drive::auth::Token;
 
 pub struct FileCredentials;

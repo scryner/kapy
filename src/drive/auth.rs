@@ -1,10 +1,9 @@
 use std::cell::RefCell;
 use std::io::{BufRead, BufReader, Write};
-use std::ops::{Add, Deref};
+use std::ops::Add;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::net::TcpListener;
-use std::env;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
@@ -16,7 +15,6 @@ use oauth2::reqwest::http_client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use crate::config;
-use crate::drive::helper;
 use crate::drive::helper::FileCredentials;
 
 // This is a installed app, client secret for OAuth2 is an extension of client id
