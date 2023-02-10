@@ -220,7 +220,6 @@ pub enum Error {
 pub struct ConfigPath {
     app_home: Rc<Box<Path>>,
     config_path: Rc<Box<Path>>,
-    app_secret_path: Rc<Box<Path>>,
     cred_path: Rc<Box<Path>>,
 }
 
@@ -233,10 +232,6 @@ impl ConfigPath {
         Rc::clone(&self.config_path)
     }
 
-    pub fn app_secret_path(&self) -> Rc<Box<Path>> {
-        Rc::clone(&self.app_secret_path)
-    }
-
     pub fn cred_path(&self) -> Rc<Box<Path>> {
         Rc::clone(&self.cred_path)
     }
@@ -246,13 +241,11 @@ pub fn default_path() -> ConfigPath {
     let home_dir = home::home_dir().unwrap();
     let app_home = home_dir.join(".kapy");
     let config_path = app_home.join("config.yaml");
-    let app_secret_path = app_home.join("app_secret.yaml");
     let cred_path = app_home.join(".cred");
 
     ConfigPath {
         app_home: Rc::new(app_home.into_boxed_path()),
         config_path: Rc::new(config_path.into_boxed_path()),
-        app_secret_path: Rc::new(app_secret_path.into_boxed_path()),
         cred_path: Rc::new(cred_path.into_boxed_path()),
     }
 }

@@ -1,6 +1,7 @@
 mod clone;
 mod init;
 mod config;
+mod clean;
 
 use std::path::PathBuf;
 use std::process;
@@ -44,6 +45,9 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
+
+    /// Clean credentials
+    Clean,
 }
 
 fn main() {
@@ -82,6 +86,9 @@ fn main() {
             }
 
             return clone::do_clone(conf, cred_path);
+        }
+        Commands::Clean => {
+            return clean::do_clean(cred_path);
         }
         _ => {
             // never reached

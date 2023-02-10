@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::net::TcpListener;
 use std::env;
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
@@ -18,13 +19,16 @@ use crate::config;
 use crate::drive::helper;
 use crate::drive::helper::FileCredentials;
 
+// This is a installed app, client secret for OAuth2 is an extension of client id
+// So, we can embed it
+const CLIENT_ID: &str = "308241855989-j1avgc71ptfakdihs3uj7pbjjric3bpj.apps.googleusercontent.com";
+const CLIENT_SECRET: &str = "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";
+
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
 const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 
-const ENV_CLIENT_ID: &str = "CLIENT_ID";
-const ENV_CLIENT_SECRET: &str = "CLIENT_SECRET";
 const ENV_LISTEN_PORT: &str = "LISTEN_PORT";
 const ENV_CRED_PATH: &str = "CRED_PATH";
 
@@ -51,6 +55,49 @@ impl Token {
 
 type Client = oauth2::Client<basic::BasicErrorResponse, BasicTokenResponse, basic::BasicTokenType, basic::BasicTokenIntrospectionResponse, revocation::StandardRevocableToken, basic::BasicRevocationErrorResponse>;
 
+pub enum CredPath<'a> {
+    Path(&'a Path),
+    DefaultPath,
+}
+
+impl<'a> CredPath<'a> {
+    fn path(&self) -> Box<Path> {
+        match self {
+            CredPath::Path(p) => {
+                p.to_path_buf().into_boxed_path()
+            }
+            CredPath::DefaultPath => {
+                let default_path = config::default_path();
+                let default_cred_path = Rc::clone(&default_path.cred_path());
+                default_cred_path.to_path_buf().into_boxed_path()
+            }
+        }
+    }
+}
+
+pub enum ListenPort {
+    Port(i32),
+    DefaultPort,
+}
+
+impl Display for ListenPort {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ListenPort::Port(port) => write!(f, "{}", port),
+            ListenPort::DefaultPort => write!(f, "{}", DEFAULT_LISTEN_PORT)
+        }
+    }
+}
+
+impl ListenPort {
+    fn port(&self) -> i32 {
+        match self {
+            ListenPort::Port(port) => *port,
+            ListenPort::DefaultPort => DEFAULT_LISTEN_PORT
+        }
+    }
+}
+
 pub struct GoogleAuthenticator {
     client: Client,
     token: Rc<RefCell<Option<Token>>>,
@@ -59,10 +106,7 @@ pub struct GoogleAuthenticator {
 }
 
 impl GoogleAuthenticator {
-    pub fn new(client_id: &str, client_secret: &str, listen_port: i32, cred_path: &Path) -> Self {
-        let client_id = ClientId::new(client_id.to_string());
-        let client_secret = ClientSecret::new(client_secret.to_string());
-
+    pub fn new(listen_port: ListenPort, cred_path: CredPath) -> Self {
         let auth_url = AuthUrl::new(GOOGLE_AUTH_URL.to_string()).unwrap();
         let token_url = TokenUrl::new(GOOGLE_TOKEN_URL.to_string()).unwrap();
 
@@ -73,8 +117,8 @@ impl GoogleAuthenticator {
 
         // create a http client
         let client = BasicClient::new(
-            client_id.clone(),
-            Some(client_secret.clone()),
+            ClientId::new(String::from(CLIENT_ID)),
+            Some(ClientSecret::new(String::from(CLIENT_SECRET))),
             auth_url.clone(),
             Some(token_url.clone()),
         )
@@ -83,43 +127,16 @@ impl GoogleAuthenticator {
 
         // try to read cred from file
         let mut token = None;
-        if let Ok(t) = FileCredentials::read_file(&cred_path) {
+        if let Ok(t) = FileCredentials::read_file(&cred_path.path()) {
             token = Some(t);
         }
 
         Self {
             client,
             token: Rc::new(RefCell::new(token)),
-            cred_path: Rc::new(RefCell::new(cred_path.to_path_buf())),
-            listen_port,
+            cred_path: Rc::new(RefCell::new(cred_path.path().to_path_buf())),
+            listen_port: listen_port.port(),
         }
-    }
-
-    pub fn new_from_env() -> Result<Self> {
-        let client_id = env::var(ENV_CLIENT_ID)?;
-        let client_secret = env::var(ENV_CLIENT_SECRET)?;
-
-        let listen_port = env::var(ENV_LISTEN_PORT).unwrap_or(String::from(""));
-        let listen_port = listen_port.parse::<i32>().unwrap_or(DEFAULT_LISTEN_PORT);
-
-        let default_path = config::default_path();
-        let default_cred_path = default_path.cred_path();
-
-        let cred_path = match env::var(ENV_CRED_PATH) {
-            Ok(s) => {
-                PathBuf::from(s)
-            }
-            _ => {
-                default_cred_path.to_path_buf()
-            }
-        };
-
-        Ok(Self::new(&client_id, &client_secret, listen_port, &cred_path))
-    }
-
-    pub fn listen_port(mut self, port: i32) -> Self {
-        self.listen_port = port;
-        self
     }
 
     pub fn access_token(&self) -> Result<AccessToken> {
@@ -355,7 +372,7 @@ mod tests {
 
     #[test]
     fn google_oauth2() {
-        let auth = GoogleAuthenticator::new_from_env().unwrap();
+        let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::DefaultPath);
 
         // get access token with login
         let ac = auth.access_token().unwrap();

@@ -118,6 +118,7 @@ mod tests {
     use reqwest;
     use std::collections::HashMap;
     use url::form_urlencoded;
+    use crate::drive::auth::{CredPath, ListenPort};
 
     #[test]
     fn build_url_param() {
@@ -161,7 +162,7 @@ mod tests {
 
     #[test]
     fn list_google_drive() {
-        let auth = GoogleAuthenticator::new_from_env().unwrap();
+        let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::DefaultPath);
         let drive = GoogleDrive::new(auth);
 
         let q = String::from("name contains 'gpx'");
@@ -172,7 +173,7 @@ mod tests {
 
     #[test]
     fn download_blob_from_google_drive() {
-        let auth = GoogleAuthenticator::new_from_env().unwrap();
+        let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::DefaultPath);
         let drive = GoogleDrive::new(auth);
 
         let file_id = "1lNuJCNkXjrUkJIDF6gKlVztQkvNPrnx-";
