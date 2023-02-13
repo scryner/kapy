@@ -2,6 +2,7 @@
 name = "kapy"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,3 +29,7 @@ bincode = "1.3.3"
 base64 = "0.21.0"
 gpx = "0.8.6"
 chrono = "0.4.23"
+
+[build-dependencies]
+cc = "1.0.79"
+pkg-config = "0.3.26"

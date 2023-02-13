@@ -5,8 +5,8 @@ use anyhow::{Result, anyhow};
 use chrono::DateTime;
 use magick_rust::{MagickWand, bindings};
 use gpx::{Gpx, Waypoint};
+use regex::internal::Input;
 use crate::drive::GoogleDrive;
-
 
 pub struct GeoTags {
     drive: GoogleDrive,
@@ -158,10 +158,33 @@ impl GeoCache {
     }
 }
 
+// native implementation to add gps info
+extern "C" {
+    fn native_add_gps_info(blob: *mut u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
+}
+
+// safe implementation to add gps info
+fn add_gps_info(mut blob: Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
+    let mut new_len = 0;
+
+    unsafe {
+        let blob_len = blob.len();
+        let mut out_blob: *mut u8 = std::ptr::null_mut();
+
+        new_len = native_add_gps_info(blob.as_mut_ptr(), blob_len, &mut out_blob, lat, lon, alt);
+        if new_len > 0 {
+            Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
+        } else {
+            Err(anyhow!("Failed to add gps info"))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::BufReader;
     use std::time;
+    use rust_decimal::Decimal;
     use super::*;
 
     #[test]
@@ -188,7 +211,6 @@ mod tests {
         let waypoint = cache.search(qt + Duration::from_secs(1)).unwrap();
         assert_eq!(qts, waypoint.unix_at().unwrap());
     }
-
 
     const TEST_GPX_CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gpx creator="Geotag Photos http://www.geotagphotos.net/" version="1.0" xmlns="http://www.topografix.com/GPX/1/0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd">
@@ -316,3 +338,25 @@ mod tests {
 </gpx>
 "#;
 }
+
+/*
+$ exiv2 -pa IMAGE.JPG | grep -i gps
+Exif.Image.GPSTag                            Long        1  6406
+Exif.GPSInfo.GPSVersionID                    Byte        4  2.3.0.0
+Exif.GPSInfo.GPSLatitudeRef                  Ascii       2  North
+Exif.GPSInfo.GPSLatitude                     Rational    3  37deg 17' 13"
+Exif.GPSInfo.GPSLongitudeRef                 Ascii       2  East
+Exif.GPSInfo.GPSLongitude                    Rational    3  126deg 32' 12"
+Exif.GPSInfo.GPSAltitudeRef                  Byte        1  Above sea level
+Exif.GPSInfo.GPSAltitude                     Rational    1  16.3 m
+
+$ identify -verbose IMAGE.JPG | grep -i gps
+    exif:GPSInfo: 6406
+    exif:GPSVersionID: ....
+    exif:GPSLatitudeRef: N
+    exif:GPSLatitude: 37/1, 17/1, 8367/625
+    exif:GPSLongitudeRef: E
+    exif:GPSLongitude: 126/1, 32/1, 15411/1250
+    exif:GPSAltitudeRef: .
+    exif:GPSAltitude: 21229/1303
+ */
