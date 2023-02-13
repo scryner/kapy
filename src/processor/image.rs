@@ -1,20 +1,106 @@
 use std::ffi::{CStr, CString, c_void};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
 use magick_rust::{MagickWand, bindings};
 
-use crate::config::{Command, Quality, Resize};
+use crate::config::{Command, Config, Format, Quality, Resize};
 
-pub fn process_command(wand: &mut MagickWand, cmd: &Command) -> Result<()> {
+
+pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<()> {
+    let mut wand = MagickWand::new();
+
+    // read image from blob
+    wand.read_image_blob(blob)?;
+
+    // get image rating
+    let rating = rating(&wand);
+    let cmd = conf.command(rating);
+
+    // process command
+    match manipulate_by_command(&mut wand, cmd)? {
+        SaveType::JustCopying => {
+            // just copying
+            let out_path = out_path(in_file, out_dir, None)?;
+            let out_path = Path::new(&out_path);
+
+            fs::copy(in_file, out_path)?;
+        }
+        SaveType::NeedConverting(format) => {
+            let out_path = out_path(in_file, out_dir, Some(&format))?;
+            wand.write_image(&out_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<String> {
+    let dir = in_file.parent()?.to_str()?;
+    let filename = in_file.file_stem()?.to_str()?;
+    let ext = in_file.extension()?.to_str()?;
+
+    let mut dest_filename = String::new();
+
+    match format {
+        Some(format) => {
+            let mut dest_ext = String::from(format).to_lowercase();
+            if dest_ext == "jpeg" {
+                dest_ext = String::from("jpg");
+            }
+
+            dest_filename = format!("{}.{}", filename, dest_ext);
+
+        },
+        None => {
+            dest_filename = format!("{}.{}", filename, ext);
+        }
+    }
+
+    let out_path = out_dir.to_path_buf()
+        .join(&dest_filename);
+
+    Ok(String::from(out_path.to_str()?))
+}
+
+pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
+    let wand = MagickWand::new();
+    let path = path.to_str()?;
+
+    // read image from file
+    wand.read_image(path)?;
+
+    // get file format
+    let format = wand.get_image_format()?;
+
+    // write image to blob
+    match wand.write_image_blob(&format) {
+        Ok(ret) => Ok((ret, format)),
+        Err(e) => {
+            Err(anyhow!("Failed to write image to blob: {}", e))
+        }
+    }
+}
+
+enum SaveType {
+    JustCopying,
+    NeedConverting(String),
+}
+
+fn manipulate_by_command(wand: &mut MagickWand, cmd: &Command) -> Result<SaveType> {
+    let mut need_to_resize = false;
+    let mut need_to_adjust_quality = false;
+    let mut need_to_convert_ext = false;
+
     match cmd {
-        Command::ByPass => return Ok(()),
+        Command::ByPass => Ok(SaveType::JustCopying),
         Command::Convert {
-            resize, format: _, quality
+            resize, format, quality
         } => {
             let mut width = 0;
             let mut height = 0;
-            let mut need_to_resize = false;
 
             let img_width = wand.get_image_width();
             let img_height = wand.get_image_height();
@@ -71,68 +157,26 @@ pub fn process_command(wand: &mut MagickWand, cmd: &Command) -> Result<()> {
                     if let Err(e) = wand.set_image_compression_quality(*percentage as usize) {
                         return Err(anyhow!("Failed to set image quality to {}%: {}", percentage, e.to_string()));
                     }
+                    need_to_adjust_quality = true;
                 }
                 Quality::Preserve => ()
             }
+
+            // get original file format
+            let orig_format = wand.get_image_format()?;
+            let dest_format = format.as_str();
+
+            if orig_format != dest_format {
+                need_to_convert_ext = true;
+            }
+
+            // return
+            if !need_to_resize && !need_to_adjust_quality && !need_to_convert_ext {
+                Ok(SaveType::JustCopying)
+            } else {
+                Ok(SaveType::NeedConverting(String::from(dest_format)))
+            }
         }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{config, processor};
-    use config::Command;
-    use crate::config::Format;
-    use crate::processor::do_clone;
-    use super::*;
-
-    #[test]
-    fn get_format() {
-        processor::prelude();
-
-        let wand = MagickWand::new();
-        wand.read_image("sample.jpg").unwrap();
-
-        let format = wand.get_image_format().unwrap();
-        println!("format = {}", format);
-    }
-
-    #[test]
-    fn process_to_convert() {
-        processor::prelude();
-
-        // read image
-        let mut wand = MagickWand::new();
-        wand.read_image("sample.jpg").unwrap();
-
-        // read image size
-        let origin_width = wand.get_image_width();
-        let origin_height = wand.get_image_height();
-
-        // process it
-        let command = Command::Convert {
-            resize: Resize::Percentage(50),
-            format: Format::JPEG,
-            quality: Quality::Preserve,
-        };
-
-        process_command(&mut wand, &command).unwrap();
-
-        // write image to blob
-        let processed = wand.write_image_blob("sample2_2.jpg").unwrap();
-
-        // re-read image from blob
-        let wand = MagickWand::new();
-        wand.read_image_blob(processed).unwrap();
-
-        // check image size
-        let target_width = wand.get_image_width();
-        let target_height = wand.get_image_height();
-
-        assert_eq!(origin_width / 2, target_width);
-        assert_eq!(origin_height / 2, target_height);
     }
 }
 
@@ -200,4 +244,60 @@ pub fn image_properties(wand: &MagickWand, name: &str) -> Result<Vec<String>> {
         bindings::MagickRelinquishMemory(result as *mut c_void);
     }
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{config, processor};
+    use config::Command;
+    use crate::config::Format;
+    use crate::processor::do_clone;
+    use super::*;
+
+    #[test]
+    fn get_format() {
+        processor::prelude();
+
+        let wand = MagickWand::new();
+        wand.read_image("sample.jpg").unwrap();
+
+        let format = wand.get_image_format().unwrap();
+        println!("format = {}", format);
+    }
+
+    #[test]
+    fn process_to_convert() {
+        processor::prelude();
+
+        // read image
+        let mut wand = MagickWand::new();
+        wand.read_image("sample.jpg").unwrap();
+
+        // read image size
+        let origin_width = wand.get_image_width();
+        let origin_height = wand.get_image_height();
+
+        // process it
+        let command = Command::Convert {
+            resize: Resize::Percentage(50),
+            format: Format::JPEG,
+            quality: Quality::Preserve,
+        };
+
+        process_command(&mut wand, &command).unwrap();
+
+        // write image to blob
+        let processed = wand.write_image_blob("sample2_2.jpg").unwrap();
+
+        // re-read image from blob
+        let wand = MagickWand::new();
+        wand.read_image_blob(processed).unwrap();
+
+        // check image size
+        let target_width = wand.get_image_width();
+        let target_height = wand.get_image_height();
+
+        assert_eq!(origin_width / 2, target_width);
+        assert_eq!(origin_height / 2, target_height);
+    }
 }

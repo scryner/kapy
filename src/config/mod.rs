@@ -16,7 +16,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ImportPath{
+pub struct ImportPath {
     from: PathBuf,
     to: PathBuf,
 }
@@ -137,6 +137,16 @@ pub enum Format {
     JPEG,
     HEIC,
     Preserve,
+}
+
+impl Format {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Format::JPEG => "JPEG",
+            Format::HEIC => "HEIC",
+            Format::Preserve => "",
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

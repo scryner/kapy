@@ -1,8 +1,9 @@
 pub mod image;
 pub mod gps;
 
+use std::fs;
 use std::sync::Once;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
 use magick_rust::{magick_wand_genesis, MagickWand};
@@ -16,33 +17,31 @@ fn prelude() {
     });
 }
 
-pub fn do_clone(conf: &Config, in_path: PathBuf, out_path: PathBuf) -> Result<()> {
+pub fn do_clone(conf: &Config, in_file: &Path, out_dir: &Path) -> Result<()> {
     // Initialize MagickWand if it needed
     prelude();
 
-    let in_path = in_path.to_str().unwrap(); // never failed
-    let mut wand = MagickWand::new();
+    // check arguments
+    if !in_file.is_file() {
+        return Err(anyhow!("Input path '{}' is not file", in_file.to_str().unwrap()))
+    }
+
+    if !out_dir.is_dir() {
+        return Err(anyhow!("Output path '{}' is not directory", in_file.to_str().unwrap()))
+    }
 
     // try to read image
-    if let Err(e) = wand.read_image(in_path) {
-        return Err(anyhow!("Failed to read image from '{}': {}", in_path, e.to_string()));
+    let (blob, format) = image::read_image_to_blob(in_file)?;
+
+    if format.to_lowercase() != "heic" {
+        // try to match gps
+        // currently, EXIV2 the library to manipulate EXIF under hood is not support HEIF/HEIC
+        todo!();
     }
-
-    // try to match gps
-
-    // get image rating
-    let rating = image::rating(&wand);
-    let command = conf.command(rating);
 
     // try to process command to manipulate image
-    if let Err(e) = image::process_command(&mut wand, command) {
+    if let Err(e) = image::process(conf, in_file, out_dir, &blob) {
         return Err(anyhow!("Failed to process image: {}", e.to_string()));
-    }
-
-    // write(clone) image
-    let out_path = out_path.to_str().unwrap();
-    if let Err(e) = wand.write_image(out_path) {
-        return Err(anyhow!("Failed to write image from '{}': {}", out_path, e.to_string()));
     }
 
     Ok(())
