@@ -195,7 +195,11 @@ static void s_buf_stream_incr(BufStream *stream) {
     stream->buf = new_buf;
     stream->capacity = new_capacity;
 
-    free(old_buf);
+    if (stream->incr_count > 0) {
+        free(old_buf);
+    }
+
+    stream->incr_count += 1;
 }
 
 static BufStream *s_buf_stream_new(unsigned char *buf, size_t buf_len) {
@@ -214,7 +218,7 @@ static BufStream *s_buf_stream_new(unsigned char *buf, size_t buf_len) {
 }
 
 static void s_buf_stream_free(BufStream *stream) {
-    if (stream->buf != NULL && stream->moved != 1) {
+    if (stream->buf != NULL && stream->incr_count > 0 && stream->moved != 1) {
         free(stream->buf);
     }
 }

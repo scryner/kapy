@@ -12,6 +12,7 @@ struct _BufStream{
     size_t length;
     size_t capacity;
     int moved;
+    int incr_count;
 };
 
 typedef struct _BufStream BufStream;

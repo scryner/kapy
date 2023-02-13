@@ -160,18 +160,18 @@ impl GeoCache {
 
 // native implementation to add gps info
 extern "C" {
-    fn native_add_gps_info(blob: *mut u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
+    fn native_add_gps_info(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
 }
 
 // safe implementation to add gps info
-fn add_gps_info(mut blob: Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
+fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
     let mut new_len = 0;
 
     unsafe {
         let blob_len = blob.len();
         let mut out_blob: *mut u8 = std::ptr::null_mut();
 
-        new_len = native_add_gps_info(blob.as_mut_ptr(), blob_len, &mut out_blob, lat, lon, alt);
+        new_len = native_add_gps_info(blob.as_ptr(), blob_len, &mut out_blob, lat, lon, alt);
         if new_len > 0 {
             Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
         } else {
