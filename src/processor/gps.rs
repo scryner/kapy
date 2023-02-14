@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::cmp::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{Result, anyhow};
-use chrono::DateTime;
+use chrono::{DateTime, Local};
 use magick_rust::{MagickWand, bindings};
 use gpx::{Gpx, Waypoint};
 use regex::internal::Input;
@@ -23,8 +23,10 @@ impl GeoTags {
         }
     }
 
-    pub fn search(&self, t: SystemTime) -> Result<Waypoint> {
-        todo!()
+    pub fn search(&self, t: &DateTime<Local>) -> Result<Waypoint> {
+        // try to find a gpx file to have same datetime with photo
+
+        todo!();
     }
 }
 

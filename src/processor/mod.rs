@@ -36,6 +36,7 @@ pub fn do_clone(conf: &Config, in_file: &Path, out_dir: &Path) -> Result<()> {
     if format.to_lowercase() != "heic" {
         // try to match gps
         // currently, EXIV2 the library to manipulate EXIF under hood is not support HEIF/HEIC
+
         todo!();
     }
 

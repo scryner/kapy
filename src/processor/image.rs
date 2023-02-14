@@ -1,10 +1,11 @@
 use std::ffi::{CStr, CString, c_void};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
+use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings};
 
 use crate::config::{Command, Config, Format, Quality, Resize};
@@ -19,13 +20,12 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
     let rating = rating(&wand);
     let cmd = conf.command(rating);
 
-    // get taken date (exif:DateTime)
+    // make out directory
     let taken_at = taken_at(&wand, in_file)?;
 
-    // make out directory
     let out_dir = out_dir
-        .join(taken_at.year.to_string())
-        .join(format!("{}-{}-{}", taken_at.year, taken_at.month, taken_at.day));
+        .join(taken_at.year().to_string())
+        .join(format!("{}-{}-{}", taken_at.year(), taken_at.month(), taken_at.day()));
 
     fs::create_dir_all(&out_dir)?;
 
@@ -47,35 +47,20 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
     Ok(())
 }
 
-struct TakenAt {
-    year: i32,
-    month: i32,
-    day: i32,
-}
-
-fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<TakenAt> {
-    // get date time from EXIF (e.g., 2023:02:03 18:14:18)
-    let prop = wand.get_image_property("exif:DateTime")?;
-
-    let year: i32;
-    let month: i32;
-    let day: i32;
-
-    let re = Regex::new(r#"^(?P<year>[0-9]{4}):(?P<month>[0-9]{2}):(?P<day>[0-9]{2})"#).unwrap();
-    if let Some(captures) = re.captures(&prop) {
-        year = captures.name("year").unwrap().as_str().parse::<i32>()?;
-        month = captures.name("month").unwrap().as_str().parse::<i32>()?;
-        day = captures.name("day").unwrap().as_str().parse::<i32>()?;
-    } else {
-        // never reached
-        return Err(anyhow!("Failed to parse taken datetime"));
+pub fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<DateTime<Local>> {
+    // try to get date time from EXIF (e.g., 2023:02:03 18:14:18)
+    match wand.get_image_property("exif:DateTime") {
+        Ok(at) => {
+            let naive_date = NaiveDateTime::parse_from_str(&at, "%Y:%m:%d %H:%M:%S")?;
+            let local_datetime = Local.from_local_datetime(&naive_date).unwrap();   // never failed
+            Ok(local_datetime)
+        }
+        Err(_) => {
+            // try to get data time from created_at in file meta
+            let created_at = in_file.metadata()?.created()?;
+            Ok(DateTime::from(created_at))
+        }
     }
-
-    Ok(TakenAt{
-        year,
-        month,
-        day,
-    })
 }
 
 fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<String> {
@@ -105,10 +90,8 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
             }
 
             dest_filename = format!("{}.{}", filename, dest_ext);
-
-        },
+        }
         None => {
-
             dest_filename = format!("{}.{}", filename, ext);
         }
     }
