@@ -1,13 +1,13 @@
 use std::ffi::{CStr, CString, c_void};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
 use magick_rust::{MagickWand, bindings};
 
 use crate::config::{Command, Config, Format, Quality, Resize};
-
 
 pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<()> {
     let mut wand = MagickWand::new();
@@ -19,17 +19,27 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
     let rating = rating(&wand);
     let cmd = conf.command(rating);
 
+    // get taken date (exif:DateTime)
+    let taken_at = taken_at(&wand, in_file)?;
+
+    // make out directory
+    let out_dir = out_dir
+        .join(taken_at.year.to_string())
+        .join(format!("{}-{}-{}", taken_at.year, taken_at.month, taken_at.day));
+
+    fs::create_dir_all(&out_dir)?;
+
     // process command
     match manipulate_by_command(&mut wand, cmd)? {
         SaveType::JustCopying => {
             // just copying
-            let out_path = out_path(in_file, out_dir, None)?;
+            let out_path = out_path(in_file, &out_dir, None)?;
             let out_path = Path::new(&out_path);
 
             fs::copy(in_file, out_path)?;
         }
         SaveType::NeedConverting(format) => {
-            let out_path = out_path(in_file, out_dir, Some(&format))?;
+            let out_path = out_path(in_file, &out_dir, Some(&format))?;
             wand.write_image(&out_path)?;
         }
     }
@@ -37,10 +47,53 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
     Ok(())
 }
 
+struct TakenAt {
+    year: i32,
+    month: i32,
+    day: i32,
+}
+
+fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<TakenAt> {
+    // get date time from EXIF (e.g., 2023:02:03 18:14:18)
+    let prop = wand.get_image_property("exif:DateTime")?;
+
+    let year: i32;
+    let month: i32;
+    let day: i32;
+
+    let re = Regex::new(r#"^(?P<year>[0-9]{4}):(?P<month>[0-9]{2}):(?P<day>[0-9]{2})"#).unwrap();
+    if let Some(captures) = re.captures(&prop) {
+        year = captures.name("year").unwrap().as_str().parse::<i32>()?;
+        month = captures.name("month").unwrap().as_str().parse::<i32>()?;
+        day = captures.name("day").unwrap().as_str().parse::<i32>()?;
+    } else {
+        // never reached
+        return Err(anyhow!("Failed to parse taken datetime"));
+    }
+
+    Ok(TakenAt{
+        year,
+        month,
+        day,
+    })
+}
+
 fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<String> {
-    let dir = in_file.parent()?.to_str()?;
-    let filename = in_file.file_stem()?.to_str()?;
-    let ext = in_file.extension()?.to_str()?;
+    let filename = match in_file.file_stem() {
+        Some(stem) => stem.to_str().unwrap(),   // never failed
+        None => {
+            // never reached
+            return Err(anyhow!("Failed to find stem of file"));
+        }
+    };
+
+    let ext = match in_file.extension() {
+        Some(ext) => ext.to_str().unwrap(), // never failed
+        None => {
+            // never reached
+            return Err(anyhow!("Failed to find extension of file"));
+        }
+    };
 
     let mut dest_filename = String::new();
 
@@ -55,6 +108,7 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
 
         },
         None => {
+
             dest_filename = format!("{}.{}", filename, ext);
         }
     }
@@ -62,12 +116,18 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
     let out_path = out_dir.to_path_buf()
         .join(&dest_filename);
 
-    Ok(String::from(out_path.to_str()?))
+    Ok(String::from(out_path.to_str().unwrap()))    // never failed
 }
 
 pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
     let wand = MagickWand::new();
-    let path = path.to_str()?;
+    let path = match path.to_str() {
+        Some(p) => p,
+        None => {
+            // never reached
+            return Err(anyhow!("Invalid path to have incompatible UTF-8"));
+        }
+    };
 
     // read image from file
     wand.read_image(path)?;
