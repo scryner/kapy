@@ -1,4 +1,4 @@
-mod auth;
+pub mod auth;
 mod helper;
 
 use std::collections::HashMap;

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
-use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
+use chrono::{Datelike, DateTime, FixedOffset, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings};
 
 use crate::config::{Command, Config, Quality, Resize};
@@ -51,6 +51,8 @@ pub fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<DateTime<Local>> {
     match wand.get_image_property("exif:DateTime") {
         Ok(at) => {
             let naive_date = NaiveDateTime::parse_from_str(&at, "%Y:%m:%d %H:%M:%S")?;
+            // FixedOffset::east_opt()
+
             let local_datetime = Local.from_local_datetime(&naive_date).unwrap();   // never failed
             Ok(local_datetime)
         }
@@ -103,7 +105,7 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
 
 pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
     let wand = MagickWand::new();
-    let path = match path.to_str() {
+    let path_str = match path.to_str() {
         Some(p) => p,
         None => {
             // never reached
@@ -112,10 +114,13 @@ pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
     };
 
     // read image from file
-    wand.read_image(path)?;
+    wand.read_image(path_str)?;
 
     // get file format
     let format = wand.get_image_format()?;
+
+    // get taken at
+    let taken_at = taken_at(&wand, path)?;
 
     // write image to blob
     match wand.write_image_blob(&format) {

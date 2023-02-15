@@ -204,6 +204,14 @@ impl Config {
         self.import.to = path;
     }
 
+    pub fn import_from(&self) -> &Path {
+        &self.import.from
+    }
+
+    pub fn import_to(&self) -> &Path {
+        &self.import.to
+    }
+
     pub fn command(&self, rate: i8) -> &Command {
         self.commands.get(&rate).unwrap_or(&Command::ByPass)
     }

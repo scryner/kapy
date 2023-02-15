@@ -14,6 +14,17 @@ pub struct GeoTags {
 
 const DEFAULT_PAGE_SIZE: i32 = 100;
 
+pub trait GpsSearch {
+    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint>;
+}
+
+pub struct NoopGpsSearch;
+impl GpsSearch for NoopGpsSearch {
+    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
+        None
+    }
+}
+
 impl GeoTags {
     pub fn new(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<GeoTags> {
         // make new storage
@@ -41,6 +52,12 @@ impl GeoTags {
     }
 
     pub fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
+        self.storage.search(t)
+    }
+}
+
+impl GpsSearch for GeoTags {
+    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
         self.storage.search(t)
     }
 }
