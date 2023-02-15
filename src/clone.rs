@@ -1,4 +1,3 @@
-use std::alloc::System;
 use std::path::Path;
 use std::process;
 use std::time::SystemTime;
@@ -6,10 +5,12 @@ use anyhow::{anyhow, Result};
 use core::time::Duration;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::processor::gps::{GeoTags, GpsSearch, NoopGpsSearch};
-use crate::drive::{auth, GoogleDrive};
+use crate::processor::gps::{GpsSearch, GpxStorage, NoopGpsSearch};
+use crate::drive::GoogleDrive;
 use crate::drive::auth::{CredPath, GoogleAuthenticator, ListenPort};
 use crate::config::Config;
+use crate::processor;
+use crate::processor::CloneStatistics;
 
 const MAX_DEPTH: usize = 10;
 const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
@@ -40,7 +41,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
         let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::Path(cred_path));
         let drive = GoogleDrive::new(auth);
 
-        match GeoTags::new(&drive, oldest_created_at, most_recent_created_at,
+        match GpxStorage::from_google_drive(&drive, oldest_created_at, most_recent_created_at,
                                 DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE, DEFAULT_GPS_MATCH_WITHIN) {
             Ok(search) => Box::new(search),
             Err(e) => {
@@ -50,19 +51,26 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
         }
     };
 
-    let mut statistics: CloneStatistics;
+    // process clone
+    let mut clone_statistics = CloneStatistics::new();
+    let mut error_entries = Vec::new();
 
+    for entry in import_entries.iter() {
+        match processor::clone_image(&conf, entry.path(), conf.import_to()) {
+            Ok(stat) => {
+                clone_statistics = clone_statistics + stat;
+            }
+            Err(e) => {
+                error_entries.push((entry, e));
+            }
+        }
+    }
+
+    // print-out clone statistics
     todo!();
 }
 
-pub struct CloneStatistics {
-    resized: usize,
-    converted_to_jpeg: usize,
-    converted_to_heic: usize,
-    gps_added: usize,
-    total_processed_files: usize,
-    total_not_processed_files: usize,
-}
+
 
 fn import_entries(dir: &Path) -> Result<Vec<DirEntry>> {
     let mut import_entries: Vec<DirEntry> = Vec::new();

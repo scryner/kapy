@@ -7,11 +7,6 @@ use chrono::{DateTime, FixedOffset, Utc};
 use gpx::{Gpx, Waypoint};
 use crate::drive::GoogleDrive;
 
-pub struct GeoTags {
-    match_within: Duration,
-    storage: GpxStorage,
-}
-
 const DEFAULT_PAGE_SIZE: i32 = 100;
 
 pub trait GpsSearch {
@@ -20,52 +15,9 @@ pub trait GpsSearch {
 
 pub struct NoopGpsSearch;
 impl GpsSearch for NoopGpsSearch {
-    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
+    fn search(&self, _t: &DateTime<FixedOffset>) -> Option<Waypoint> {
         None
     }
-}
-
-impl GeoTags {
-    pub fn new(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<GeoTags> {
-        // make new storage
-        let mut storage = GpxStorage::new(match_within);
-
-        // make query to find gpx files on google drive
-        let start: DateTime<Utc> = DateTime::from(start);
-        let end: DateTime<Utc> = DateTime::from(end);
-        let q = format!("modifiedTime >= '{}' and createdTime <= '{}' and mimeType='application/gpx+xml",
-                        start.to_rfc3339(), end.to_rfc3339());
-
-        // query to google drive
-        let list = drive.list(&q, max_gpx_files, None)?;
-
-        for gpx in list.files.iter() {
-            // download content
-            let blob = drive.download_blob(&gpx.id)?;
-            storage.pour_into(blob)?;
-        }
-
-        Ok(GeoTags{
-            match_within,
-            storage,
-        })
-    }
-
-    pub fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
-        self.storage.search(t)
-    }
-}
-
-impl GpsSearch for GeoTags {
-    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
-        self.storage.search(t)
-    }
-}
-
-#[derive(Debug)]
-struct GpxStorage {
-    cache: BTreeMap<i64, Vec<Waypoint>>,
-    match_within: Duration,
 }
 
 trait UnixTime {
@@ -132,14 +84,40 @@ trait Pour<T> {
     fn pour_into(&mut self, data: T) -> Result<i32>;
 }
 
+#[derive(Debug)]
+pub struct GpxStorage {
+    cache: BTreeMap<i64, Vec<Waypoint>>,
+    match_within: Duration,
+}
+
 impl GpxStorage {
-    fn new(match_within: Duration) -> GpxStorage {
-        GpxStorage {
+    pub fn from_google_drive(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<Self> {
+        // make new storage
+        let mut storage = GpxStorage{
             cache: BTreeMap::new(),
             match_within,
-        }
-    }
+        };
 
+        // make query to find gpx files on google drive
+        let start: DateTime<Utc> = DateTime::from(start);
+        let end: DateTime<Utc> = DateTime::from(end);
+        let q = format!("modifiedTime >= '{}' and createdTime <= '{}' and mimeType='application/gpx+xml",
+                        start.to_rfc3339(), end.to_rfc3339());
+
+        // query to google drive
+        let list = drive.list(&q, max_gpx_files, None)?;
+
+        for gpx in list.files.iter() {
+            // download content
+            let blob = drive.download_blob(&gpx.id)?;
+            storage.pour_into(blob)?;
+        }
+
+        Ok(storage)
+    }
+}
+
+impl GpsSearch for GpxStorage {
     fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
         let t = t.timestamp();
 

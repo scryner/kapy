@@ -1,16 +1,72 @@
 use std::ffi::{CStr, CString, c_void};
 use std::fs;
+use std::ops::Add;
 use std::path::Path;
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
-use chrono::{Datelike, DateTime, FixedOffset, Local, NaiveDateTime, TimeZone};
+use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings};
 
 use crate::config::{Command, Config, Quality, Resize};
 
-pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<()> {
+pub struct Statistics {
+    pub copying: usize,
+    pub converted: usize,
+    pub converted_statistics: ConvertedStatistics,
+}
+
+impl Statistics {
+    fn new() -> Self {
+        Self {
+            copying: 0,
+            converted: 0,
+            converted_statistics: ConvertedStatistics {
+                resized: 0,
+                adjust_quality: 0,
+                converted_to_jpeg: 0,
+                converted_to_heic: 0,
+            },
+        }
+    }
+}
+
+impl Add for Statistics {
+    type Output = Statistics;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            copying: self.copying + rhs.copying,
+            converted: self.converted + rhs.converted,
+            converted_statistics: self.converted_statistics + rhs.converted_statistics,
+        }
+    }
+}
+
+pub struct ConvertedStatistics {
+    pub resized: usize,
+    pub adjust_quality: usize,
+    pub converted_to_jpeg: usize,
+    pub converted_to_heic: usize,
+}
+
+impl Add for ConvertedStatistics {
+    type Output = ConvertedStatistics;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            resized: self.resized + rhs.resized,
+            adjust_quality: self.adjust_quality + rhs.adjust_quality,
+            converted_to_jpeg: self.converted_to_jpeg + rhs.converted_to_jpeg,
+            converted_to_heic: self.converted_to_heic + rhs.converted_to_heic,
+        }
+    }
+}
+
+
+pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<Statistics> {
     let mut wand = MagickWand::new();
+    let mut statistics = Statistics::new();
 
     // read image from blob
     wand.read_image_blob(blob)?;
@@ -36,14 +92,33 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
             let out_path = Path::new(&out_path);
 
             fs::copy(in_file, out_path)?;
+            statistics.copying += 1;
         }
-        SaveType::NeedConverting(format) => {
+        SaveType::NeedRewrite {
+            resize,
+            adjust_quality,
+            convert,
+            format
+        } => {
             let out_path = out_path(in_file, &out_dir, Some(&format))?;
             wand.write_image(&out_path)?;
+
+            statistics.converted += 1;
+            if resize { statistics.converted_statistics.resized += 1 };
+            if adjust_quality { statistics.converted_statistics.adjust_quality += 1 };
+            if convert {
+                match format.to_lowercase().as_str() {
+                    "jpeg" | "jpg" => statistics.converted_statistics.converted_to_jpeg += 1,
+                    "heic" => statistics.converted_statistics.converted_to_heic += 1,
+                    _ => {
+                        panic!("never reached! wrong format '{}'", format);
+                    }
+                }
+            }
         }
     }
 
-    Ok(())
+    Ok(statistics)
 }
 
 pub fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<DateTime<Local>> {
@@ -119,9 +194,6 @@ pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
     // get file format
     let format = wand.get_image_format()?;
 
-    // get taken at
-    let taken_at = taken_at(&wand, path)?;
-
     // write image to blob
     match wand.write_image_blob(&format) {
         Ok(ret) => Ok((ret, format)),
@@ -133,7 +205,12 @@ pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
 
 enum SaveType {
     JustCopying,
-    NeedConverting(String),
+    NeedRewrite {
+        resize: bool,
+        adjust_quality: bool,
+        convert: bool,
+        format: String,
+    },
 }
 
 fn manipulate_by_command(wand: &mut MagickWand, cmd: &Command) -> Result<SaveType> {
@@ -221,7 +298,12 @@ fn manipulate_by_command(wand: &mut MagickWand, cmd: &Command) -> Result<SaveTyp
             if !need_to_resize && !need_to_adjust_quality && !need_to_convert_ext {
                 Ok(SaveType::JustCopying)
             } else {
-                Ok(SaveType::NeedConverting(String::from(dest_format)))
+                Ok(SaveType::NeedRewrite {
+                    resize: need_to_resize,
+                    adjust_quality: need_to_adjust_quality,
+                    convert: need_to_convert_ext,
+                    format: String::from(dest_format),
+                })
             }
         }
     }
@@ -298,7 +380,7 @@ mod tests {
     use crate::{config, processor};
     use config::Command;
     use crate::config::Format;
-    use crate::processor::do_clone;
+    use crate::processor::clone_image;
     use super::*;
 
     #[test]

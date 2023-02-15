@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
-use anyhow::Result;
 use crate::config::Config;
 
 #[derive(Parser)]
