@@ -22,16 +22,16 @@ impl GoogleDrive {
         GoogleDrive { authenticator }
     }
 
-    pub fn list(&self, q: String, page_size: i32, next_page_token: Option<String>) -> Result<ListResponse> {
+    pub fn list(&self, q: &str, page_size: usize, next_page_token: Option<&str>) -> Result<ListResponse> {
         // make params
         let mut params = HashMap::new();
-        params.insert("q", q);
+        params.insert("q", String::from(q));
 
         let page_size_str = format!("{}", page_size);
         params.insert("pageSize", page_size_str);
 
         if let Some(page_token) = next_page_token {
-            params.insert("pageToken", page_token);
+            params.insert("pageToken", String::from(page_token));
         }
 
         // request
@@ -45,7 +45,7 @@ impl GoogleDrive {
         }
     }
 
-    pub fn get(&self, file_id: String) -> Result<GetResponse> {
+    pub fn get(&self, file_id: &str) -> Result<GetResponse> {
         let u = format!("{}/{}", GOOGLE_DRIVE_API_V3_FILES_URL, file_id);
         let res = self.request(u, HashMap::new())?;
 
@@ -56,7 +56,7 @@ impl GoogleDrive {
         }
     }
 
-    pub fn download_blob(&self, file_id: String) -> Result<Bytes> {
+    pub fn download_blob(&self, file_id: &str) -> Result<Bytes> {
         let u = format!("{}/{}?alt=media", GOOGLE_DRIVE_API_V3_FILES_URL, file_id);
         let res = self.request(u, HashMap::new())?;
 
@@ -93,10 +93,10 @@ impl GoogleDrive {
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct ListResponse {
-    kind: String,
-    incomplete_search: bool,
-    files: Vec<FileMetadata>,
-    next_page_token: Option<String>,
+    pub kind: String,
+    pub incomplete_search: bool,
+    pub files: Vec<FileMetadata>,
+    pub next_page_token: Option<String>,
 }
 
 pub type GetResponse = FileMetadata;
@@ -105,10 +105,10 @@ pub type GetResponse = FileMetadata;
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct FileMetadata {
-    kind: String,
-    id: String,
-    name: String,
-    mime_type: String,
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
 }
 
 #[cfg(test)]
@@ -166,7 +166,7 @@ mod tests {
         let drive = GoogleDrive::new(auth);
 
         let q = String::from("name contains 'gpx'");
-        let list_resp = drive.list(q, 100, None).unwrap();
+        let list_resp = drive.list(&q, 100, None).unwrap();
 
         println!("{:#?}", list_resp);
     }

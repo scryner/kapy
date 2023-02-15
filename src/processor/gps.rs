@@ -1,37 +1,52 @@
 use std::collections::BTreeMap;
-use std::cmp::Ordering;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::BufReader;
+use std::time::{Duration, SystemTime};
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Local};
-use magick_rust::{MagickWand, bindings};
+use bytes::Bytes;
+use chrono::{DateTime, FixedOffset, Utc};
 use gpx::{Gpx, Waypoint};
-use regex::internal::Input;
 use crate::drive::GoogleDrive;
 
 pub struct GeoTags {
-    drive: GoogleDrive,
     match_within: Duration,
-    cached: GeoCache,
+    storage: GpxStorage,
 }
 
+const DEFAULT_PAGE_SIZE: i32 = 100;
+
 impl GeoTags {
-    pub fn new(drive: GoogleDrive, match_within: Duration) -> GeoTags {
-        GeoTags {
-            drive,
-            match_within,
-            cached: GeoCache::new(match_within),
+    pub fn new(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<GeoTags> {
+        // make new storage
+        let mut storage = GpxStorage::new(match_within);
+
+        // make query to find gpx files on google drive
+        let start: DateTime<Utc> = DateTime::from(start);
+        let end: DateTime<Utc> = DateTime::from(end);
+        let q = format!("modifiedTime >= '{}' and createdTime <= '{}' and mimeType='application/gpx+xml",
+                        start.to_rfc3339(), end.to_rfc3339());
+
+        // query to google drive
+        let list = drive.list(&q, max_gpx_files, None)?;
+
+        for gpx in list.files.iter() {
+            // download content
+            let blob = drive.download_blob(&gpx.id)?;
+            storage.pour_into(blob)?;
         }
+
+        Ok(GeoTags{
+            match_within,
+            storage,
+        })
     }
 
-    pub fn search(&self, t: &DateTime<Local>) -> Result<Waypoint> {
-        // try to find a gpx file to have same datetime with photo
-
-        todo!();
+    pub fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
+        self.storage.search(t)
     }
 }
 
 #[derive(Debug)]
-struct GeoCache {
+struct GpxStorage {
     cache: BTreeMap<i64, Vec<Waypoint>>,
     match_within: Duration,
 }
@@ -65,12 +80,12 @@ impl TimestampKey for Duration {
 
     fn make_prev_key(&self, t: i64) -> i64 {
         let curr = self.make_key(t);
-        t - self.as_secs() as i64
+        curr - self.as_secs() as i64
     }
 
     fn make_next_key(&self, t: i64) -> i64 {
         let curr = self.make_key(t);
-        t + self.as_secs() as i64
+        curr + self.as_secs() as i64
     }
 }
 
@@ -96,17 +111,21 @@ impl SearchWaypoint for Vec<Waypoint> {
     }
 }
 
-impl GeoCache {
-    fn new(match_within: Duration) -> GeoCache {
-        GeoCache {
+trait Pour<T> {
+    fn pour_into(&mut self, data: T) -> Result<i32>;
+}
+
+impl GpxStorage {
+    fn new(match_within: Duration) -> GpxStorage {
+        GpxStorage {
             cache: BTreeMap::new(),
             match_within,
         }
     }
 
-    fn search(&self, t: SystemTime) -> Option<Waypoint> {
-        let t = t.duration_since(UNIX_EPOCH).unwrap();    // never failed
-        let t = t.as_secs() as i64; // never overflowed until 2106
+    fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint> {
+        let t = t.timestamp();
+
         let keys = vec![
             self.match_within.make_prev_key(t),
             self.match_within.make_key(t),
@@ -126,7 +145,9 @@ impl GeoCache {
 
         target.closest(t)
     }
+}
 
+impl Pour<Gpx> for GpxStorage {
     fn pour_into(&mut self, data: Gpx) -> Result<i32> {
         let mut counts = 0;
 
@@ -160,6 +181,16 @@ impl GeoCache {
     }
 }
 
+impl Pour<Bytes> for GpxStorage {
+    fn pour_into(&mut self, data: Bytes) -> Result<i32> {
+        // parse gpx from bytes
+        let reader = BufReader::new(data.as_ref());
+        let g = gpx::read(reader)?;
+
+        self.pour_into(g)
+    }
+}
+
 // native implementation to add gps info
 extern "C" {
     fn native_add_gps_info(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
@@ -167,7 +198,7 @@ extern "C" {
 
 // safe implementation to add gps info
 fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
-    let mut new_len = 0;
+    let new_len;
 
     unsafe {
         let blob_len = blob.len();
@@ -186,6 +217,7 @@ fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>>
 mod tests {
     use std::io::BufReader;
     use std::time;
+    use chrono::FixedOffset;
     use rust_decimal::Decimal;
     use super::*;
 
@@ -197,17 +229,15 @@ mod tests {
         let g = gpx::read(reader).unwrap();
 
         // pouring
-        let mut cache = GeoCache::new(Duration::from_secs(300));
+        let mut cache = GpxStorage::new(Duration::from_secs(300));
         let counts = cache.pour_into(g).unwrap();
         println!("{} waypoints were poured", counts);
 
         // search
         let qs = "2023-02-03T05:29:36Z";
         let qdt = DateTime::parse_from_rfc3339(qs).unwrap();
-        let qts = qdt.timestamp();
-        let qt = UNIX_EPOCH + Duration::from_secs(qts as u64);
 
-        let waypoint = cache.search(qt).unwrap();
+        let waypoint = cache.search(&qdt).unwrap();
         assert_eq!(qts, waypoint.unix_at().unwrap());
 
         let waypoint = cache.search(qt + Duration::from_secs(1)).unwrap();

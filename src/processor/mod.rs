@@ -1,12 +1,11 @@
 pub mod image;
 pub mod gps;
 
-use std::fs;
 use std::sync::Once;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Result, anyhow};
-use magick_rust::{magick_wand_genesis, MagickWand};
+use magick_rust::magick_wand_genesis;
 use crate::config::Config;
 
 static START: Once = Once::new();

@@ -1,14 +1,13 @@
 use std::ffi::{CStr, CString, c_void};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
 use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings};
 
-use crate::config::{Command, Config, Format, Quality, Resize};
+use crate::config::{Command, Config, Quality, Resize};
 
 pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<()> {
     let mut wand = MagickWand::new();
@@ -80,7 +79,7 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
         }
     };
 
-    let mut dest_filename = String::new();
+    let dest_filename;
 
     match format {
         Some(format) => {
