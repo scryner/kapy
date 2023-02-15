@@ -126,8 +126,6 @@ pub fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<DateTime<Local>> {
     match wand.get_image_property("exif:DateTime") {
         Ok(at) => {
             let naive_date = NaiveDateTime::parse_from_str(&at, "%Y:%m:%d %H:%M:%S")?;
-            // FixedOffset::east_opt()
-
             let local_datetime = Local.from_local_datetime(&naive_date).unwrap();   // never failed
             Ok(local_datetime)
         }
@@ -178,7 +176,14 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
     Ok(String::from(out_path.to_str().unwrap()))    // never failed
 }
 
-pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
+pub struct ImageBlob {
+    pub blob: Vec<u8>,
+    pub format: String,
+    pub gps_recorded: bool,
+    pub taken_at: DateTime<Local>,
+}
+
+pub fn read_image_to_blob(path: &Path) -> Result<ImageBlob> {
     let wand = MagickWand::new();
     let path_str = match path.to_str() {
         Some(p) => p,
@@ -194,12 +199,30 @@ pub fn read_image_to_blob(path: &Path) -> Result<(Vec<u8>, String)> {
     // get file format
     let format = wand.get_image_format()?;
 
+    // get gps recorded
+    let gps_recorded = gps_recorded(&wand);
+
+    // get taken at
+    let taken_at = taken_at(&wand, path)?;
+
     // write image to blob
     match wand.write_image_blob(&format) {
-        Ok(ret) => Ok((ret, format)),
+        Ok(blob) => Ok(ImageBlob {
+            blob,
+            format,
+            gps_recorded,
+            taken_at,
+        }),
         Err(e) => {
             Err(anyhow!("Failed to write image to blob: {}", e))
         }
+    }
+}
+
+fn gps_recorded(wand: &MagickWand) -> bool {
+    match (wand.get_image_property("exif:GPSLatitude"), wand.get_image_property("exif:GPSLongitude")) {
+        (Ok(_), Ok(_)) => true,
+        (_, _) => false
     }
 }
 
@@ -380,7 +403,6 @@ mod tests {
     use crate::{config, processor};
     use config::Command;
     use crate::config::Format;
-    use crate::processor::clone_image;
     use super::*;
 
     #[test]
@@ -413,7 +435,7 @@ mod tests {
             quality: Quality::Preserve,
         };
 
-        process_command(&mut wand, &command).unwrap();
+        manipulate_by_command(&mut wand, &command).unwrap();
 
         // write image to blob
         let processed = wand.write_image_blob("sample2_2.jpg").unwrap();

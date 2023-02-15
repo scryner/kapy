@@ -27,9 +27,6 @@ const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
 const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 
-const ENV_LISTEN_PORT: &str = "LISTEN_PORT";
-const ENV_CRED_PATH: &str = "CRED_PATH";
-
 const DEFAULT_LISTEN_PORT: i32 = 18080;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,6 +50,7 @@ impl Token {
 
 type Client = oauth2::Client<basic::BasicErrorResponse, BasicTokenResponse, basic::BasicTokenType, basic::BasicTokenIntrospectionResponse, revocation::StandardRevocableToken, basic::BasicRevocationErrorResponse>;
 
+#[allow(dead_code)]
 pub enum CredPath<'a> {
     Path(&'a Path),
     DefaultPath,
@@ -73,6 +71,7 @@ impl<'a> CredPath<'a> {
     }
 }
 
+#[allow(dead_code)]
 pub enum ListenPort {
     Port(i32),
     DefaultPort,
@@ -363,7 +362,6 @@ fn serve_redirect_oauth2(listen_port: i32) -> Result<(AuthorizationCode, CsrfTok
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
     use oauth2::basic::BasicTokenType;
     use oauth2::EmptyExtraTokenFields;
     use crate::drive::helper::FileCredentials;

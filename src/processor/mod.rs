@@ -1,13 +1,17 @@
 pub mod image;
 pub mod gps;
 
+use std::mem;
 use std::ops::Add;
 use std::sync::Once;
 use std::path::Path;
+use std::rc::Rc;
 
 use anyhow::{Result, anyhow};
+use chrono::{DateTime, FixedOffset, Local};
 use magick_rust::magick_wand_genesis;
 use crate::config::Config;
+use crate::processor::gps::GpsSearch;
 use crate::processor::image::{Statistics as ImageStatistics};
 
 static START: Once = Once::new();
@@ -55,7 +59,7 @@ fn prelude() {
     });
 }
 
-pub fn clone_image(conf: &Config, in_file: &Path, out_dir: &Path) -> Result<CloneStatistics> {
+pub fn clone_image<'a>(conf: &Config, in_file: &Path, out_dir: &Path, gpx: Rc<Box<dyn GpsSearch + 'a>>) -> Result<CloneStatistics> {
     // Initialize MagickWand if it needed
     prelude();
 
@@ -71,13 +75,31 @@ pub fn clone_image(conf: &Config, in_file: &Path, out_dir: &Path) -> Result<Clon
     }
 
     // try to read image
-    let (blob, format) = image::read_image_to_blob(in_file)?;
+    let image_blob = image::read_image_to_blob(in_file)?;
 
-    if format.to_lowercase() != "heic" {
+    // move value from image_blob
+    let gps_recorded = image_blob.gps_recorded;
+    let format = image_blob.format;
+    let taken_at = image_blob.taken_at;
+    let mut blob = image_blob.blob;
+
+    if !gps_recorded && format.to_lowercase() != "heic" {
         // try to match gps
         // currently, EXIV2 the library to manipulate EXIF under hood is not support HEIF/HEIC
+        let taken_at = taken_at.to_fixed_offset();
+        let gpx = gpx.clone();
 
-        todo!();
+        if let Some(waypoint) = gpx.search(&taken_at) {
+            let lat = waypoint.point().y();
+            let lon = waypoint.point().x();
+            let alt = waypoint.elevation.unwrap_or(0.0);
+
+            let mut other_blob = gps::add_gps_info(&blob, lat, lon, alt)?;
+            mem::swap::<Vec<u8>>(&mut blob, &mut other_blob);
+
+            // early drop other_blob
+            drop(other_blob);
+        }
     }
 
     // try to process command to manipulate image
@@ -93,3 +115,12 @@ pub fn clone_image(conf: &Config, in_file: &Path, out_dir: &Path) -> Result<Clon
     Ok(statistics)
 }
 
+trait ToFixedOffset {
+    fn to_fixed_offset(&self) -> DateTime<FixedOffset>;
+}
+
+impl ToFixedOffset for DateTime<Local> {
+    fn to_fixed_offset(&self) -> DateTime<FixedOffset> {
+        self.with_timezone(self.offset())
+    }
+}

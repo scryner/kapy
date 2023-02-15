@@ -3,6 +3,7 @@ use std::process;
 use std::time::SystemTime;
 use anyhow::{anyhow, Result};
 use core::time::Duration;
+use std::rc::Rc;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::processor::gps::{GpsSearch, GpxStorage, NoopGpsSearch};
@@ -34,8 +35,8 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
         }
     };
 
-    let gps_search: Box<dyn GpsSearch> = if ignore_geotag {
-        Box::new(NoopGpsSearch)
+    let gps_search: Rc<Box<dyn GpsSearch>> = if ignore_geotag {
+        Rc::new(Box::new(NoopGpsSearch))
     } else {
         // initialize google drive
         let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::Path(cred_path));
@@ -43,7 +44,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
 
         match GpxStorage::from_google_drive(&drive, oldest_created_at, most_recent_created_at,
                                 DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE, DEFAULT_GPS_MATCH_WITHIN) {
-            Ok(search) => Box::new(search),
+            Ok(search) => Rc::new(Box::new(search)),
             Err(e) => {
                 eprintln!("Failed to initialize geotag search on your google drive: {}", e);
                 process::exit(1);
@@ -56,7 +57,9 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
     let mut error_entries = Vec::new();
 
     for entry in import_entries.iter() {
-        match processor::clone_image(&conf, entry.path(), conf.import_to()) {
+        let gps_search = Rc::clone(&gps_search);
+
+        match processor::clone_image(&conf, entry.path(), conf.import_to(), gps_search) {
             Ok(stat) => {
                 clone_statistics = clone_statistics + stat;
             }
@@ -69,8 +72,6 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
     // print-out clone statistics
     todo!();
 }
-
-
 
 fn import_entries(dir: &Path) -> Result<Vec<DirEntry>> {
     let mut import_entries: Vec<DirEntry> = Vec::new();

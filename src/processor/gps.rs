@@ -7,8 +7,6 @@ use chrono::{DateTime, FixedOffset, Utc};
 use gpx::{Gpx, Waypoint};
 use crate::drive::GoogleDrive;
 
-const DEFAULT_PAGE_SIZE: i32 = 100;
-
 pub trait GpsSearch {
     fn search(&self, t: &DateTime<FixedOffset>) -> Option<Waypoint>;
 }
@@ -91,12 +89,16 @@ pub struct GpxStorage {
 }
 
 impl GpxStorage {
-    pub fn from_google_drive(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<Self> {
-        // make new storage
-        let mut storage = GpxStorage{
+    pub fn new(match_within: Duration) -> Self {
+        Self {
             cache: BTreeMap::new(),
             match_within,
-        };
+        }
+    }
+
+    pub fn from_google_drive(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<Self> {
+        // make new storage
+        let mut storage = GpxStorage::new(match_within);
 
         // make query to find gpx files on google drive
         let start: DateTime<Utc> = DateTime::from(start);
@@ -192,7 +194,7 @@ extern "C" {
 }
 
 // safe implementation to add gps info
-fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
+pub fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
     let new_len;
 
     unsafe {
@@ -211,9 +213,6 @@ fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>>
 #[cfg(test)]
 mod tests {
     use std::io::BufReader;
-    use std::time;
-    use chrono::FixedOffset;
-    use rust_decimal::Decimal;
     use super::*;
 
     #[test]
@@ -224,18 +223,21 @@ mod tests {
         let g = gpx::read(reader).unwrap();
 
         // pouring
-        let mut cache = GpxStorage::new(Duration::from_secs(300));
-        let counts = cache.pour_into(g).unwrap();
+        let mut storage = GpxStorage::new(Duration::from_secs(300));
+        let counts = storage.pour_into(g).unwrap();
         println!("{} waypoints were poured", counts);
 
         // search
         let qs = "2023-02-03T05:29:36Z";
         let qdt = DateTime::parse_from_rfc3339(qs).unwrap();
+        let qts = qdt.timestamp();
 
-        let waypoint = cache.search(&qdt).unwrap();
+        let waypoint = storage.search(&qdt).unwrap();
+
         assert_eq!(qts, waypoint.unix_at().unwrap());
 
-        let waypoint = cache.search(qt + Duration::from_secs(1)).unwrap();
+        let qdt = qdt + chrono::Duration::seconds(1);
+        let waypoint = storage.search(&qdt).unwrap();
         assert_eq!(qts, waypoint.unix_at().unwrap());
     }
 

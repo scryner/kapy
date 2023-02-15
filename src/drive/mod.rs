@@ -45,6 +45,7 @@ impl GoogleDrive {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, file_id: &str) -> Result<GetResponse> {
         let u = format!("{}/{}", GOOGLE_DRIVE_API_V3_FILES_URL, file_id);
         let res = self.request(u, HashMap::new())?;
@@ -99,6 +100,7 @@ pub struct ListResponse {
     pub next_page_token: Option<String>,
 }
 
+#[allow(dead_code)]
 pub type GetResponse = FileMetadata;
 
 #[derive(Deserialize, Debug)]
@@ -114,8 +116,6 @@ pub struct FileMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{env, sync};
-    use reqwest;
     use std::collections::HashMap;
     use url::form_urlencoded;
     use crate::drive::auth::{CredPath, ListenPort};
@@ -177,7 +177,7 @@ mod tests {
         let drive = GoogleDrive::new(auth);
 
         let file_id = "1lNuJCNkXjrUkJIDF6gKlVztQkvNPrnx-";
-        let dn_resp = drive.download_blob(String::from(file_id)).unwrap();
+        let dn_resp = drive.download_blob(file_id).unwrap();
         let  v = dn_resp.to_vec();
         let s = String::from_utf8(v).unwrap();
 
