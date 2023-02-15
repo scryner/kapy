@@ -54,7 +54,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
 
     // process clone
     let mut clone_statistics = CloneStatistics::new();
-    let mut error_entries = Vec::new();
+    let mut errors = Vec::new();
 
     for entry in import_entries.iter() {
         let gps_search = Rc::clone(&gps_search);
@@ -64,13 +64,13 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
                 clone_statistics = clone_statistics + stat;
             }
             Err(e) => {
-                error_entries.push((entry, e));
+                errors.push((entry, e));
             }
         }
     }
 
     // print-out clone statistics
-    todo!();
+    clone_statistics.print_with_error(&errors);
 }
 
 fn import_entries(dir: &Path) -> Result<Vec<DirEntry>> {
