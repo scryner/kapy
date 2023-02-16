@@ -125,11 +125,40 @@ pub enum Command {
     },
 }
 
+impl ToString for Command {
+    fn to_string(&self) -> String {
+        match self {
+            Command::ByPass => String::from("Bypass"),
+            Command::Convert {
+                resize, format, quality
+            } => {
+                format!("{} / {} / {}", resize.to_string(), format.to_string(), quality.to_string())
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Resize {
     Percentage(u8),
     MPixels(u8),
     Preserve,
+}
+
+impl ToString for Resize {
+    fn to_string(&self) -> String {
+        match self {
+            Resize::Percentage(percent) => {
+                format!("Resize({}%)", *percent)
+            }
+            Resize::MPixels(mpixels) => {
+                format!("Resize({}MP)", *mpixels)
+            }
+            Resize::Preserve => {
+                "Resize(-)".to_string()
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -149,10 +178,30 @@ impl Format {
     }
 }
 
+impl ToString for Format {
+    fn to_string(&self) -> String {
+        self.as_str().to_string()
+    }
+}
+
+
 #[derive(Debug, PartialEq)]
 pub enum Quality {
     Percentage(u8),
     Preserve,
+}
+
+impl ToString for Quality {
+    fn to_string(&self) -> String {
+        match self {
+            Quality::Percentage(percent) => {
+                format!("Quality({}%)", percent)
+            }
+            Quality::Preserve => {
+                "Quality(-)".to_string()
+            }
+        }
+    }
 }
 
 impl Config {

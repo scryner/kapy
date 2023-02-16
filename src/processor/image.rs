@@ -63,12 +63,24 @@ impl Add for ConvertedStatistics {
     }
 }
 
+pub enum ProcessState {
+    Reading(String),
+    JustCopying(String, String),
+    Rewriting(String, String, String),
+}
 
-pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) -> Result<Statistics> {
+pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
+                  blob: &Vec<u8>, dry_run: bool, when_update: F) -> Result<Statistics>
+where
+F: Fn(ProcessState)
+{
     let mut wand = MagickWand::new();
     let mut statistics = Statistics::new();
 
     // read image from blob
+    let in_file_str = in_file.to_str().unwrap();
+
+    when_update(ProcessState::Reading(String::from(in_file_str)));
     wand.read_image_blob(blob)?;
 
     // get image rating
@@ -87,11 +99,18 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
     // process command
     match manipulate_by_command(&mut wand, cmd)? {
         SaveType::JustCopying => {
-            // just copying
-            let out_path = out_path(in_file, &out_dir, None)?;
-            let out_path = Path::new(&out_path);
+            if !dry_run {
+                // just copying
+                let out_path_string = out_path(in_file, &out_dir, None)?;
+                let out_path = Path::new(&out_path_string);
 
-            fs::copy(in_file, out_path)?;
+                when_update(ProcessState::JustCopying(
+                    String::from(in_file_str),
+                    out_path_string.clone()));
+
+                fs::copy(in_file, out_path)?;
+            }
+
             statistics.copying += 1;
         }
         SaveType::NeedRewrite {
@@ -100,8 +119,17 @@ pub fn process(conf: &Config, in_file: &Path, out_dir: &Path, blob: &Vec<u8>) ->
             convert,
             format
         } => {
-            let out_path = out_path(in_file, &out_dir, Some(&format))?;
-            wand.write_image(&out_path)?;
+            if !dry_run {
+                let out_path = out_path(in_file, &out_dir, Some(&format))?;
+
+                when_update(ProcessState::Rewriting(
+                    String::from(in_file_str),
+                    out_path.clone(),
+                    cmd.to_string()
+                ));
+
+                wand.write_image(&out_path)?;
+            }
 
             statistics.converted += 1;
             if resize { statistics.converted_statistics.resized += 1 };

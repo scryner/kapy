@@ -12,6 +12,7 @@ pub trait GpsSearch {
 }
 
 pub struct NoopGpsSearch;
+
 impl GpsSearch for NoopGpsSearch {
     fn search(&self, _t: &DateTime<FixedOffset>) -> Option<Waypoint> {
         None
@@ -96,7 +97,11 @@ impl GpxStorage {
         }
     }
 
-    pub fn from_google_drive(drive: &GoogleDrive, start: SystemTime, end: SystemTime, max_gpx_files: usize, match_within: Duration) -> Result<Self> {
+    pub fn from_google_drive<F>(drive: &GoogleDrive, start: SystemTime, end: SystemTime,
+                                max_gpx_files: usize, match_within: Duration, mut when_update: F) -> Result<Self>
+        where
+            F: FnMut(String),
+    {
         // make new storage
         let mut storage = GpxStorage::new(match_within);
 
@@ -110,6 +115,8 @@ impl GpxStorage {
         let list = drive.list(&q, max_gpx_files, None)?;
 
         for gpx in list.files.iter() {
+            when_update(gpx.name.clone());
+
             // download content
             let blob = drive.download_blob(&gpx.id)?;
             storage.pour_into(blob)?;

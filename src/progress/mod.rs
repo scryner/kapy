@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
 use indicatif::{MultiProgress, ProgressStyle, ProgressBar};
 
 pub struct Progress<'a> {
@@ -13,11 +12,13 @@ pub enum PanelType<'a> {
     Message(&'a str),
 }
 
+#[allow(dead_code)]
 pub enum Update {
     Position(u64, Option<String>),
     Incr(Option<String>),
 }
 
+#[allow(dead_code)]
 impl<'a> Progress<'a> {
     pub fn new(panel_defs: Vec<PanelType<'a>>) -> Self {
         let bar_style = ProgressStyle::with_template("{spinner:.white} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>5}/{len:5}")
@@ -31,11 +32,7 @@ impl<'a> Progress<'a> {
         let container = MultiProgress::new();
         let mut panels = HashMap::new();
 
-        let mut prev_pb: &ProgressBar;
-
-
-        for (i, def) in panel_defs.iter().enumerate() {
-
+        for def in panel_defs.iter() {
             match *def {
                 PanelType::Bar(key, len) => {
                     let pb = container.add(ProgressBar::new(len));
@@ -81,23 +78,30 @@ impl<'a> Progress<'a> {
         }
     }
 
+    pub fn finish_all(&self) {
+        for (_, pb) in self.panels.iter() {
+            pb.finish();
+        }
+    }
+
     pub fn finish_with_message(&self, key : &str, message: &'static str) {
         if let Some(pb) = self.panels.get(key) {
             pb.finish_with_message(message);
         }
     }
 
-    fn clear(&self) -> Result<()> {
-        match self.container.clear() {
-            Ok(()) => Ok(()),
-            Err(e) => Err(anyhow!("Failed to clear: {}", e)),
-        }
+    pub fn clear(&self) {
+        self.container.clear().unwrap_or(())
+    }
+
+    pub fn println<I: AsRef<str>>(&self, msg: I)  {
+        self.container.println(msg).unwrap_or(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{mem, thread};
     use std::time::Duration;
     use super::*;
 
@@ -118,10 +122,9 @@ mod tests {
             thread::sleep(Duration::from_millis(15));
         }
 
-        p.finish_with_message("bar", "done");
+        p.finish("bar");
         p.finish("msg");
-        thread::sleep(Duration::from_secs(1));
-
-        p.clear().unwrap();
+        p.println("Done");
+        p.clear();
     }
 }
