@@ -12,12 +12,16 @@ use crate::drive::auth::{CredPath, GoogleAuthenticator, ListenPort};
 use crate::config::Config;
 use crate::processor;
 use crate::processor::CloneStatistics;
+use crate::progress::{PanelType, Progress};
 
 const MAX_DEPTH: usize = 10;
 const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
 const DEFAULT_GPS_MATCH_WITHIN: Duration = Duration::from_secs(5 * 60); // match within 5 min
 
 pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
+    // calculate when to copy started (since the last save to 'conf.to_path')
+    todo!();
+
     // calculate first date and end date among import files
     let import_entries = match import_entries(conf.import_from()) {
         Ok(ret) => ret,
@@ -35,6 +39,13 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
         }
     };
 
+    // make progress bar
+    // let panels = vec![PanelType::]
+    //
+    // let progress= Progress::new();
+    todo!();
+
+    // make gps search trait object
     let gps_search: Rc<Box<dyn GpsSearch>> = if ignore_geotag {
         Rc::new(Box::new(NoopGpsSearch))
     } else {
@@ -43,7 +54,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool) {
         let drive = GoogleDrive::new(auth);
 
         match GpxStorage::from_google_drive(&drive, oldest_created_at, most_recent_created_at,
-                                DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE, DEFAULT_GPS_MATCH_WITHIN) {
+                                            DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE, DEFAULT_GPS_MATCH_WITHIN) {
             Ok(search) => Rc::new(Box::new(search)),
             Err(e) => {
                 eprintln!("Failed to initialize geotag search on your google drive: {}", e);
@@ -80,27 +91,25 @@ fn import_entries(dir: &Path) -> Result<Vec<DirEntry>> {
     for entry in WalkDir::new(dir)
         .max_depth(MAX_DEPTH)
         .into_iter()
-        .filter_map(|entry| {
-            if let Ok(entry) = entry {
-                let path = entry.path();
+        .filter_map(|entry| if let Ok(entry) = entry {
+            let path = entry.path();
 
-                return if path.is_file() && path.extension().map_or(false, |ext| {
-                    if let Some(ext) = ext.to_str() {
-                        match ext.to_lowercase().as_str() {
-                            "jpeg" | "jpg" | "heic" => true,
-                            _ => false,
-                        }
-                    } else {
-                        false
+            return if path.is_file() && path.extension().map_or(false, |ext| {
+                if let Some(ext) = ext.to_str() {
+                    match ext.to_lowercase().as_str() {
+                        "jpeg" | "jpg" | "heic" => true,
+                        _ => false,
                     }
-                }) {
-                    Some(entry)
                 } else {
-                    None
+                    false
                 }
+            }) {
+                Some(entry)
             } else {
                 None
-            }
+            };
+        } else {
+            None
         }) {
         import_entries.push(entry);
     };
@@ -110,7 +119,7 @@ fn import_entries(dir: &Path) -> Result<Vec<DirEntry>> {
 
 fn oldest_and_most_recent_created(entries: &Vec<DirEntry>) -> Result<(SystemTime, SystemTime)> {
     let created_at_list = entries.iter()
-        .map(|entry| entry.metadata().unwrap().created().unwrap() )
+        .map(|entry| entry.metadata().unwrap().created().unwrap())
         .collect::<Vec<SystemTime>>();
 
     let oldest = created_at_list.iter().min();

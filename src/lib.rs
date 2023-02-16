@@ -5,6 +5,7 @@ mod clone;
 mod config;
 mod processor;
 mod drive;
+mod progress;
 
 use std::path::PathBuf;
 use std::process;
