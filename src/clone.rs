@@ -21,7 +21,7 @@ const MAX_DEPTH: usize = 10;
 const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
 const DEFAULT_GPS_MATCH_WITHIN: Duration = Duration::from_secs(5 * 60); // match within 5 min
 
-pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool) {
+pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool, force_after: Option<String>) {
     // print info
     let import_from = conf.import_from().to_str().unwrap();
     let import_to = conf.import_to().to_str().unwrap();
@@ -46,11 +46,25 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
     }
 
     // calculate when to copy started (since the last save to 'conf.to_path')
-    let to_be_import_after = match to_be_imported_after(conf.import_to()) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Failed to determine date and time to be imported after: {}", e);
-            process::exit(1);
+    let to_be_import_after = match force_after {
+        Some(after) => {
+            // valid: YYYY or YYYY-MM-DD or YYYY-MM
+            match system_time_from_str(&after) {
+                Ok(t) => Some(t),
+                Err(_) => {
+                    eprintln!("Invalid time format: YYYY-MM-DD or YYYY-MM or YYYY are valid");
+                    process::exit(1);
+                }
+            }
+        },
+        None => {
+            match to_be_imported_after(conf.import_to()) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("Failed to determine date and time to be imported after: {}", e);
+                    process::exit(1);
+                }
+            }
         }
     };
 
@@ -188,6 +202,7 @@ fn oldest_and_most_recent_created(entries: &Vec<DirEntry>) -> Result<(SystemTime
 }
 
 const RE_ONLY_YEAR: &str = "^[0-9]{4}$";
+const RE_YEAR_MONTH: &str = r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})$";
 const RE_YEAR_MONTH_DAY: &str = r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})$";
 
 fn to_be_imported_after(out_dir: &Path) -> Result<Option<SystemTime>> {
@@ -275,12 +290,20 @@ fn get_last_modified_dir(dir: &Path, re_pattern: Option<&str>) -> Result<Option<
 
 fn system_time_from_str(s: &str) -> Result<SystemTime> {
     let re_only_year = Regex::new(RE_ONLY_YEAR)?;
+    let re_year_month = Regex::new(RE_YEAR_MONTH)?;
     let re_year_month_day = Regex::new(RE_YEAR_MONTH_DAY)?;
 
     let naive_str;
 
     if re_only_year.is_match(s) {
         naive_str = format!("{}-01-01 00:00:00", s);
+    } else if re_year_month.is_match(s) {
+        let captures = re_year_month_day.captures(s).unwrap();
+
+        let year = captures.name("year").unwrap().as_str();
+        let month = captures.name("month").unwrap().as_str();
+
+        naive_str = format!("{}-{}-01 00:00:00", year, month);
     } else if re_year_month_day.is_match(s) {
         let captures = re_year_month_day.captures(s).unwrap();
 
@@ -303,7 +326,6 @@ fn system_time_from_str(s: &str) -> Result<SystemTime> {
             return Err(anyhow!("Failed to local datetime"));
         }
     };
-
 
     Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(local_dt.timestamp() as u64))
 }
