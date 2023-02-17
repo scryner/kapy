@@ -1,27 +1,22 @@
 pub mod image;
 pub mod gps;
 
-use std::mem;
 use std::ops::Add;
-use std::sync::Once;
 use std::path::Path;
 use std::rc::Rc;
 
 use console::style;
 use anyhow::{Result, Error, anyhow};
 use chrono::{DateTime, FixedOffset, Local};
-use magick_rust::magick_wand_genesis;
+
 use walkdir::DirEntry;
 use crate::config::Config;
 use crate::processor::gps::GpsSearch;
-use crate::processor::image::{ProcessState, Statistics as ImageStatistics};
-
-static START: Once = Once::new();
+use crate::processor::image::{HEIC_FORMAT, ProcessState, Statistics as ImageStatistics};
 
 pub struct CloneStatistics {
     pub total_cloned: usize,
     pub image: Option<ImageStatistics>,
-    pub gps_added: usize,
 }
 
 impl CloneStatistics {
@@ -29,32 +24,30 @@ impl CloneStatistics {
         Self {
             total_cloned: 0,
             image: None,
-            gps_added: 0,
         }
     }
 
     /*
     123 total images (120 succeed / 3 failed)
     ---
-    110 added gps info
      10 just copied
     100 processed
-      - 50 resized
-      - 30 adjusted quality
-      - 90 converted to HEIC
-      -  0 converted to JPEG
+      - 100 gps added
+      -  50 resized
+      -  30 adjusted quality
+      -  90 converted to HEIC
+      -   0 converted to JPEG
      */
-    pub fn print_with_error(&self, errors: &Vec<(&DirEntry, Error)>) {
+    pub fn print_with_error(&self, total_images: usize, errors: &Vec<(&DirEntry, Error)>) {
         let error_len = errors.len();
         let width = max_width(vec![self.total_cloned, error_len]);
         print!("{:>width$} total images", style(self.total_cloned).blue());
         println!(" ({:>width$} succeed / {} failed)",
-                 style(self.total_cloned - error_len).green(),
+                 style(total_images - error_len).green(),
                  if error_len > 0 { style(error_len).red() } else { style(error_len).dim() });
 
         println!("{}", style("---").dim());
 
-        println!("{:>width$} added gps info", self.gps_added);
         if let Some(image_stat) = &self.image {
             println!("{:>width$} just copied", image_stat.copying);
             println!("{:>width$} skipped", image_stat.skipped);
@@ -67,10 +60,21 @@ impl CloneStatistics {
                                              converted_stat.converted_to_heic,
                                              converted_stat.converted_to_jpeg]);
 
+            println!("{:>width$} {:>inner_width$} gps added", style("-").yellow(), converted_stat.gps_added);
             println!("{:>width$} {:>inner_width$} resized", style("-").yellow(), converted_stat.resized);
             println!("{:>width$} {:>inner_width$} adjusted quality", style("-").yellow(), converted_stat.adjust_quality);
             println!("{:>width$} {:>inner_width$} converted to HEIC", style("-").yellow(), converted_stat.converted_to_heic);
             println!("{:>width$} {:>inner_width$} converted to JPEG", style("-").yellow(), converted_stat.converted_to_jpeg);
+        }
+
+        // print errors
+        if errors.len() > 0 {
+            println!("{}", style("---").dim());
+            println!("Errors:");
+            for (entry, e) in errors.iter() {
+                println!("{} {}: {}", style("-").red(),
+                         style(entry.path().to_str().unwrap()).red().bold(), e);
+            }
         }
     }
 }
@@ -104,15 +108,8 @@ impl Add for CloneStatistics {
         Self {
             total_cloned: self.total_cloned + rhs.total_cloned,
             image: image_stat,
-            gps_added: self.gps_added + rhs.gps_added,
         }
     }
-}
-
-fn prelude() {
-    START.call_once(|| {
-        magick_wand_genesis();
-    });
 }
 
 pub enum CloneState {
@@ -131,9 +128,6 @@ pub fn clone_image<'a, F>(conf: &Config,
     where
         F: Fn(CloneState)
 {
-    // Initialize MagickWand if it needed
-    prelude();
-
     let mut statistics = CloneStatistics::new();
 
     // check arguments
@@ -145,47 +139,38 @@ pub fn clone_image<'a, F>(conf: &Config,
         return Err(anyhow!("Output path '{}' is not directory", in_file.to_str().unwrap()));
     }
 
-    // try to read image
+    // try to inspect metadata from image file
     let in_path_str = in_file.file_name().unwrap().to_str().unwrap();    // never failed
     when_update(CloneState::Inspect(String::from(in_path_str)));
+    let inspection = image::inspect_image_from_path(in_file)?;
 
-    let image_blob = image::read_image_to_blob(in_file)?;
-
-    // move value from image_blob
-    let gps_recorded = image_blob.gps_recorded;
-    let format = image_blob.format;
-    let taken_at = image_blob.taken_at;
-    let mut blob = image_blob.blob;
-    let mut gps_added = false;
-
-    if !gps_recorded && format.to_lowercase() != "heic" {
+    // retrieve gps data
+    let mut gps_info = None;
+    if !inspection.gps_recorded && inspection.format != HEIC_FORMAT {
         // try to match gps
         // currently, EXIV2 the library to manipulate EXIF under hood is not support HEIF/HEIC
-        when_update(CloneState::AddGps(String::from(in_path_str)));
-
-        let taken_at = taken_at.to_fixed_offset();
         let gpx = gpx.clone();
+        let taken_at = inspection.taken_at.to_fixed_offset();
 
         if let Some(waypoint) = gpx.search(&taken_at) {
-            let lat = waypoint.point().y();
-            let lon = waypoint.point().x();
-            let alt = waypoint.elevation.unwrap_or(0.0);
-
-            let mut other_blob = image::add_gps_info_to_blob(&blob, lat, lon, alt)?;
-            mem::swap::<Vec<u8>>(&mut blob, &mut other_blob);
-
-            // early drop other_blob
-            drop(other_blob);
-
-            gps_added = true;
+            gps_info = Some(image::GpsInfo {
+                lat: waypoint.point().y(),
+                lon: waypoint.point().x(),
+                alt: waypoint.elevation.unwrap_or(0.0),
+            });
+        } else {
+            gps_info = None
         }
     }
 
     // try to process command to manipulate image
-    match image::process(conf, in_file, out_dir, &blob, dry_run, |state| {
+    match image::process(conf, in_file, out_dir, &inspection, gps_info, dry_run, |state| {
         match state {
             ProcessState::Reading(in_path) => {
                 when_update(CloneState::Reading(in_path));
+            }
+            ProcessState::AddingGps(in_path) => {
+                when_update(CloneState::AddGps(in_path));
             }
             ProcessState::JustCopying(in_path, out_path) => {
                 when_update(CloneState::Copying(in_path, out_path));
@@ -198,7 +183,6 @@ pub fn clone_image<'a, F>(conf: &Config,
         Ok(image_stat) => {
             statistics.total_cloned += 1;
             statistics.image = Some(image_stat);
-            statistics.gps_added += if gps_added { 1 } else { 0 };
         }
         Err(e) => {
             return Err(anyhow!("Failed to process image: {}", e.to_string()));

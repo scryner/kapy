@@ -1,15 +1,25 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_void, c_char};
 use std::fs;
+use std::mem::swap;
 use std::ops::Add;
 use std::path::Path;
+use std::sync::Once;
 
 use regex::Regex;
 use anyhow::{Result, anyhow};
 use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
-use magick_rust::{MagickWand, bindings};
+use magick_rust::{MagickWand, bindings, magick_wand_genesis};
 
-use crate::config::{Command, Config, Quality, Resize};
+use crate::config::{Command, Config, Format, Quality, Resize};
+
+static START: Once = Once::new();
+
+fn prelude() {
+    START.call_once(|| {
+        magick_wand_genesis();
+    });
+}
 
 pub struct Statistics {
     pub skipped: usize,
@@ -29,6 +39,7 @@ impl Statistics {
                 adjust_quality: 0,
                 converted_to_jpeg: 0,
                 converted_to_heic: 0,
+                gps_added: 0,
             },
         }
     }
@@ -52,6 +63,7 @@ pub struct ConvertedStatistics {
     pub adjust_quality: usize,
     pub converted_to_jpeg: usize,
     pub converted_to_heic: usize,
+    pub gps_added: usize,
 }
 
 impl Add for ConvertedStatistics {
@@ -63,36 +75,29 @@ impl Add for ConvertedStatistics {
             adjust_quality: self.adjust_quality + rhs.adjust_quality,
             converted_to_jpeg: self.converted_to_jpeg + rhs.converted_to_jpeg,
             converted_to_heic: self.converted_to_heic + rhs.converted_to_heic,
+            gps_added: self.gps_added + rhs.gps_added,
         }
     }
 }
 
 pub enum ProcessState {
     Reading(String),
+    AddingGps(String),
     JustCopying(String, String),
     Rewriting(String, String, String),
 }
 
 pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
-                  blob: &Vec<u8>, dry_run: bool, when_update: F) -> Result<Statistics>
+                  inspection: &Inspection, gps_info: Option<GpsInfo>,
+                  dry_run: bool, when_update: F) -> Result<Statistics>
     where
         F: Fn(ProcessState)
 {
-    let mut wand = MagickWand::new();
+    prelude();
+
     let mut statistics = Statistics::new();
 
-    // read image from blob
-    let in_path_str = in_file.file_name().unwrap().to_str().unwrap();
-
-    when_update(ProcessState::Reading(String::from(in_path_str)));
-    wand.read_image_blob(blob)?;
-
-    // get image rating
-    let rating = rating_from_wand(&wand);
-    let cmd = conf.command(rating);
-
-    // make out directory
-    let taken_at = taken_at(&wand, in_file)?;
+    let taken_at = inspection.taken_at;
 
     let out_dir = out_dir
         .join(taken_at.year().to_string())
@@ -100,90 +105,120 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
 
     fs::create_dir_all(&out_dir)?;
 
+    let cmd = conf.command(inspection.rating);
+    let in_path_str = in_file.file_name().unwrap().to_str().unwrap();
+
     // process command
-    match manipulate_by_command(&mut wand, cmd)? {
-        SaveType::JustCopying => {
-            if !dry_run {
-                // just copying
-                let out_path = out_path(in_file, &out_dir, None)?;
-                let out_path = Path::new(&out_path);
-                let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
+    let save_opt = save_option_by_command(cmd, inspection, gps_info)?;
+    if let Some(rewrite_info) = save_opt {
+        loop {
+            // determine file path according to rewrite info
+            let out_path_string = out_path(in_file, &out_dir, rewrite_info.target_format.clone())?;
+            let out_path = Path::new(&out_path_string);
+            let out_filename_str = out_path.file_name().unwrap().to_str().unwrap();
 
-                if !out_path.exists() {
-                    when_update(ProcessState::JustCopying(
-                        String::from(in_path_str),
-                        String::from(out_path_str)));
-
-                    fs::copy(in_file, out_path)?;
-                    statistics.copying += 1;
-                } else {
-                    statistics.skipped += 1;
-                }
-            } else {
+            if out_path.exists() {
                 statistics.skipped += 1;
+                break;
             }
-        }
-        SaveType::NeedRewrite {
-            resize,
-            adjust_quality,
-            convert,
-            format
-        } => {
-            if !dry_run {
-                let out_path_string = out_path(in_file, &out_dir, Some(&format))?;
-                let out_path = Path::new(&out_path_string);
-                let out_filename_str = out_path.file_name().unwrap().to_str().unwrap();
 
-                if !out_path.exists() {
-                    when_update(ProcessState::Rewriting(
-                        String::from(in_path_str),
-                        String::from(out_filename_str),
-                        cmd.to_string(),
-                    ));
+            let mut wand = MagickWand::new();
 
-                    wand.write_image(&out_path_string)?;
-                    statistics.converted += 1;
+            if let Some(gps_info) = rewrite_info.gps_info {
+                // read image fom file to blob
+                when_update(ProcessState::Reading(String::from(in_path_str)));
+                let mut blob = read_image_to_blob(in_file)?;
 
-                    if resize { statistics.converted_statistics.resized += 1 };
-                    if adjust_quality { statistics.converted_statistics.adjust_quality += 1 };
-                    if convert {
-                        match format.to_lowercase().as_str() {
-                            "jpeg" | "jpg" => statistics.converted_statistics.converted_to_jpeg += 1,
-                            "heic" => statistics.converted_statistics.converted_to_heic += 1,
-                            _ => {
-                                panic!("never reached! wrong format '{}'", format);
-                            }
+                // adding gps
+                when_update(ProcessState::AddingGps(String::from(in_path_str)));
+                let mut other_blob = add_gps_info_to_blob(&blob, gps_info)?;
+                swap(&mut blob, &mut other_blob);
+                drop(other_blob);
+
+                statistics.converted_statistics.gps_added += 1;
+
+                // re-read from blob
+                wand.read_image_blob(&blob)?;
+            } else {
+                when_update(ProcessState::Reading(String::from(in_path_str)));
+                wand.read_image(in_file.to_str().unwrap())?;
+            }
+
+            // determine resize
+            let img_width = wand.get_image_width();
+            let img_height = wand.get_image_height();
+
+            if let Some((width, height)) = determine_resize(img_width, img_height, &rewrite_info.resize) {
+                if width >= img_width || height >= img_height {
+                    return Err(anyhow!("Invalid target image size ({}, {}) from ({}, {})",
+                            width, height, img_width, img_height));
+                }
+
+                wand.resize_image(width, height, bindings::FilterType_LanczosFilter);
+                statistics.converted_statistics.resized += 1;
+            }
+
+            // quality
+            if let Some(percentage) = rewrite_info.quality {
+                wand.set_image_compression_quality(percentage as usize)?;
+                statistics.converted_statistics.adjust_quality += 1;
+            }
+
+            // rewrite
+            if dry_run {
+                statistics.skipped += 1;
+            } else {
+                // actually rewrite
+                when_update(ProcessState::Rewriting(
+                    String::from(in_path_str),
+                    String::from(out_filename_str),
+                    cmd.to_string(),
+                ));
+
+                wand.write_image(&out_path_string)?;
+                statistics.converted += 1;
+
+                match rewrite_info.target_format {
+                    Some(ref format) => {
+                        match format.as_str() {
+                            JPEG_FORMAT => statistics.converted_statistics.converted_to_jpeg += 1,
+                            HEIC_FORMAT => statistics.converted_statistics.converted_to_heic += 1,
+                            _ => ()
                         }
                     }
-                } else {
-                    statistics.skipped += 1;
+                    None => ()
                 }
+            }
+
+            break;
+        }
+    } else {
+        // just copying
+        if !dry_run {
+            // just copying
+            let out_path = out_path(in_file, &out_dir, None)?;
+            let out_path = Path::new(&out_path);
+            let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
+
+            if !out_path.exists() {
+                when_update(ProcessState::JustCopying(
+                    String::from(in_path_str),
+                    String::from(out_path_str)));
+
+                fs::copy(in_file, out_path)?;
+                statistics.copying += 1;
             } else {
                 statistics.skipped += 1;
             }
+        } else {
+            statistics.skipped += 1;
         }
     }
 
     Ok(statistics)
 }
 
-pub fn taken_at(wand: &MagickWand, in_file: &Path) -> Result<DateTime<Local>> {
-    // try to get date time from EXIF (e.g., 2023:02:03 18:14:18)
-    match wand.get_image_property("exif:DateTime") {
-        Ok(at) => {
-            let naive_date = NaiveDateTime::parse_from_str(&at, "%Y:%m:%d %H:%M:%S")?;
-            let local_datetime = Local.from_local_datetime(&naive_date).unwrap();   // never failed
-            Ok(local_datetime)
-        }
-        Err(_) => {
-            // try to get data time from created_at in file meta
-            let created_at = in_file.metadata()?.created()?;
-            Ok(DateTime::from(created_at))
-        }
-    }
-}
-
-fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<String> {
+fn out_path(in_file: &Path, out_dir: &Path, format: Option<String>) -> Result<String> {
     let filename = match in_file.file_stem() {
         Some(stem) => stem.to_str().unwrap(),   // never failed
         None => {
@@ -222,18 +257,85 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
     Ok(String::from(out_path.to_str().unwrap()))    // never failed
 }
 
-// pub struct Inspection {
-//     pub
-// }
+pub const JPEG_FORMAT: &str = "jpeg";
+pub const HEIC_FORMAT: &str = "heic";
 
-pub struct ImageBlob {
-    pub blob: Vec<u8>,
+const META_DATETIME: &str = "Exif.Image.DateTime";
+const META_RATING: &str = "Xmp.xmp.Rating";
+const META_GPS_LAT: &str = "Exif.GPSInfo.GPSLatitude";
+const META_GPS_LON: &str = "Exif.GPSInfo.GPSLongitude";
+
+pub struct Inspection {
     pub format: String,
     pub gps_recorded: bool,
     pub taken_at: DateTime<Local>,
+    pub rating: i8,
 }
 
-pub fn read_image_to_blob(path: &Path) -> Result<ImageBlob> {
+pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
+    let tags = vec![
+        String::from(META_DATETIME),
+        String::from(META_RATING),
+        String::from(META_GPS_LAT),
+        String::from(META_GPS_LON),
+    ];
+
+    // get from gexiv2 library
+    let (mime, vals) = tags_from_path(path, tags)?;
+
+    // get format
+    let format = match mime.as_str() {
+        "image/jpeg" => JPEG_FORMAT,
+        "video/quicktime" => HEIC_FORMAT,
+        _ => return Err(anyhow!("Unsupported mime: {}", mime))
+    };
+
+    // get gps recorded
+    let lat_recorded = match vals.get(META_GPS_LAT) {
+        Some(s) => s.len() > 0,
+        None => false,
+    };
+
+    let lon_recorded = match vals.get(META_GPS_LON) {
+        Some(s) => s.len() > 0,
+        None => false,
+    };
+
+    let gps_recorded = lat_recorded && lon_recorded;
+
+    // get taken at
+    let taken_at;
+
+    match vals.get(META_DATETIME) {
+        Some(dt) if dt.len() > 0 => {
+            let naive_date = NaiveDateTime::parse_from_str(&dt, "%Y:%m:%d %H:%M:%S")?;
+            taken_at = Local.from_local_datetime(&naive_date).unwrap();   // never failed
+        }
+        _ => {
+            let created_at = path.metadata()?.created()?;
+            taken_at = DateTime::from(created_at);
+        }
+    }
+
+    // get rating
+    let mut rating = -1;
+
+    if let Some(rating_str) = vals.get(META_RATING) {
+        match rating_str.parse::<i8>() {
+            Ok(n) => rating = n,
+            _ => ()
+        }
+    }
+
+    Ok(Inspection {
+        format: format.to_string(),
+        gps_recorded,
+        taken_at,
+        rating,
+    })
+}
+
+fn read_image_to_blob(path: &Path) -> Result<Vec<u8>> {
     let wand = MagickWand::new();
     let path_str = match path.to_str() {
         Some(p) => p,
@@ -249,139 +351,103 @@ pub fn read_image_to_blob(path: &Path) -> Result<ImageBlob> {
     // get file format
     let format = wand.get_image_format()?;
 
-    // get gps recorded
-    let gps_recorded = gps_recorded(&wand);
-
-    // get taken at
-    let taken_at = taken_at(&wand, path)?;
-
     // write image to blob
     match wand.write_image_blob(&format) {
-        Ok(blob) => Ok(ImageBlob {
-            blob,
-            format,
-            gps_recorded,
-            taken_at,
-        }),
+        Ok(blob) => Ok(blob),
         Err(e) => {
             Err(anyhow!("Failed to write image to blob: {}", e))
         }
     }
 }
 
-fn gps_recorded(wand: &MagickWand) -> bool {
-    match (wand.get_image_property("exif:GPSLatitude"), wand.get_image_property("exif:GPSLongitude")) {
-        (Ok(_), Ok(_)) => true,
-        (_, _) => false
-    }
+pub struct ConvertInfo {
+    pub resize: Resize,
+    pub quality: Option<u8>,
+    pub target_format: Option<String>,
+    pub gps_info: Option<GpsInfo>,
 }
 
-enum SaveType {
-    JustCopying,
-    NeedRewrite {
-        resize: bool,
-        adjust_quality: bool,
-        convert: bool,
-        format: String,
-    },
-}
-
-fn manipulate_by_command(wand: &mut MagickWand, cmd: &Command) -> Result<SaveType> {
-    let mut need_to_resize = false;
-    let mut need_to_adjust_quality = false;
-    let mut need_to_convert_ext = false;
-
-    match cmd {
-        Command::ByPass => Ok(SaveType::JustCopying),
-        Command::Convert {
-            resize, format, quality
-        } => {
-            let mut width = 0;
-            let mut height = 0;
-
-            let img_width = wand.get_image_width();
-            let img_height = wand.get_image_height();
-
-            // resizing
-            loop {
-                match resize {
-                    Resize::Percentage(percentage) => {
-                        if *percentage >= 100 {
-                            break;
-                        }
-                        let ratio: f64 = *percentage as f64 / 100.0;
-
-                        width = (img_width as f64 * ratio) as usize;
-                        height = (img_height as f64 * ratio) as usize;
-
-                        need_to_resize = true;
-                    }
-                    Resize::MPixels(m_pixels) => {
-                        let img_pixels = img_width * img_height;
-                        let target_pixels = *m_pixels as usize * 1000000;
-
-                        let proportion_to_target = target_pixels as f64 / img_pixels as f64;
-
-                        if proportion_to_target > 0.9 {
-                            // not needed to resize (differ under 10%)
-                            break;
-                        }
-
-                        // calculate target width and height
-                        width = (img_width as f64 * proportion_to_target) as usize;
-                        height = (img_height as f64 * proportion_to_target) as usize;
-
-                        need_to_resize = true;
-                    }
-                    Resize::Preserve => ()
-                }
-
-                if need_to_resize {
-                    if width >= img_width || height >= img_height {
-                        return Err(anyhow!("Invalid target image size ({}, {}) from ({}, {})",
-                            width, height, img_width, img_height));
-                    }
-
-                    wand.resize_image(width, height, bindings::FilterType_LanczosFilter)
-                }
-
-                break;
-            }
-
-            // quality
-            match quality {
-                Quality::Percentage(percentage) => {
-                    if let Err(e) = wand.set_image_compression_quality(*percentage as usize) {
-                        return Err(anyhow!("Failed to set image quality to {}%: {}", percentage, e.to_string()));
-                    }
-                    need_to_adjust_quality = true;
-                }
-                Quality::Preserve => ()
-            }
-
-            // get original file format
-            let orig_format = wand.get_image_format()?;
-            let dest_format = format.as_str();
-
-            if orig_format != dest_format {
-                need_to_convert_ext = true;
-            }
-
-            // return
-            if !need_to_resize && !need_to_adjust_quality && !need_to_convert_ext {
-                Ok(SaveType::JustCopying)
-            } else {
-                Ok(SaveType::NeedRewrite {
-                    resize: need_to_resize,
-                    adjust_quality: need_to_adjust_quality,
-                    convert: need_to_convert_ext,
-                    format: String::from(dest_format),
-                })
-            }
+fn save_option_by_command(cmd: &Command, inspection: &Inspection, gps_info: Option<GpsInfo>) -> Result<Option<ConvertInfo>> {
+    let (resize, format, quality) = match cmd {
+        Command::Convert { resize, format, quality } => {
+            (resize, format, quality)
         }
+        Command::ByPass => {
+            return if inspection.gps_recorded || gps_info.is_none() {
+                Ok(None)
+            } else {
+                Ok(Some(ConvertInfo {
+                    resize: Resize::Preserve,
+                    quality: None,
+                    target_format: None,
+                    gps_info,
+                }))
+            };
+        }
+    };
+
+    // resize
+    let resize = resize.clone();
+
+    // quality
+    let quality = match quality {
+        Quality::Percentage(p) => {
+            Some(*p)
+        }
+        Quality::Preserve => None
+    };
+
+    // convert
+    let convert = match format {
+        Format::JPEG if inspection.format.as_str() != JPEG_FORMAT => Some(JPEG_FORMAT.to_string()),
+        Format::HEIC if inspection.format.as_str() != HEIC_FORMAT => Some(HEIC_FORMAT.to_string()),
+        _ => None
+    };
+
+    Ok(Some(ConvertInfo {
+        resize,
+        quality,
+        target_format: convert,
+        gps_info,
+    }))
+}
+
+fn determine_resize(img_width: usize, img_height: usize, resize: &Resize) -> Option<(usize, usize)> {
+    match resize {
+        Resize::Percentage(percentage) => {
+            if *percentage >= 100 {
+                return None;
+            }
+            let ratio: f64 = *percentage as f64 / 100.0;
+
+            let width = (img_width as f64 * ratio) as usize;
+            let height = (img_height as f64 * ratio) as usize;
+
+            Some((width, height))
+        }
+        Resize::MPixels(m_pixels) => {
+            let img_pixels = img_width * img_height;
+            let target_pixels = *m_pixels as usize * 1000000;
+
+            let proportion_to_target = target_pixels as f64 / img_pixels as f64;
+
+            if proportion_to_target > 0.9 {
+                // not needed to resize (differ under 10%)
+                return None;
+            }
+
+            // calculate target width and height
+            let width = (img_width as f64 * proportion_to_target) as usize;
+            let height = (img_height as f64 * proportion_to_target) as usize;
+
+            Some((width, height))
+        }
+
+        Resize::Preserve => None,
     }
 }
 
+#[allow(dead_code)]
 fn image_profile(wand: &MagickWand, name: &str) -> Result<String> {
     let c_name = CString::new(name).unwrap();
     let mut n = 0;
@@ -402,6 +468,7 @@ fn image_profile(wand: &MagickWand, name: &str) -> Result<String> {
     value
 }
 
+#[allow(dead_code)]
 pub fn rating_from_wand(wand: &MagickWand) -> i8 {
     let xmp = match image_profile(wand, "xmp") {
         Ok(xmp) => xmp,
@@ -427,14 +494,22 @@ extern "C" {
 }
 
 // safe implementation to add gps info
-pub fn add_gps_info_to_blob(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
+
+pub struct GpsInfo {
+    pub lat: f64,
+    pub lon: f64,
+    pub alt: f64,
+}
+
+pub fn add_gps_info_to_blob(blob: &Vec<u8>, gps_info: GpsInfo) -> Result<Vec<u8>> {
     let new_len;
 
     unsafe {
         let blob_len = blob.len();
         let mut out_blob: *mut u8 = std::ptr::null_mut();
 
-        new_len = native_add_gps_info_to_blob(blob.as_ptr(), blob_len, &mut out_blob, lat, lon, alt);
+        new_len = native_add_gps_info_to_blob(blob.as_ptr(), blob_len, &mut out_blob,
+                                              gps_info.lat, gps_info.lon, gps_info.alt);
         if new_len > 0 {
             Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
         } else {
@@ -444,7 +519,7 @@ pub fn add_gps_info_to_blob(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Res
 }
 
 // safe implementation to get tags
-pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<(String, HashMap<String, String>)> {
+fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<(String, HashMap<String, String>)> {
     // prepare to pass tags
     let tag_len = tags.len();
     let mut ctags: Vec<CString> = tags.iter().map(|s| CString::new(s.as_str()).unwrap()).collect();
@@ -465,7 +540,7 @@ pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<(String, HashMap
         let vals_ptr = native_get_tags_from_path(path_str.as_ptr(), ctags_ptr, tag_len);
 
         // transform
-        for i in 0..tag_len+1 {
+        for i in 0..tag_len + 1 {
             let val_ptr = *vals_ptr.offset(i as isize) as *const c_char;
             if !val_ptr.is_null() {
                 let val_str = CStr::from_ptr(*vals_ptr.offset(i as isize) as *const c_char);
@@ -543,7 +618,7 @@ mod tests {
 
     #[test]
     fn get_format() {
-        processor::prelude();
+        prelude();
 
         let wand = MagickWand::new();
         wand.read_image("sample.jpg").unwrap();
@@ -553,53 +628,15 @@ mod tests {
     }
 
     #[test]
-    fn process_to_convert() {
-        processor::prelude();
-
-        // read image
-        let mut wand = MagickWand::new();
-        wand.read_image("sample.jpg").unwrap();
-
-        // read image size
-        let origin_width = wand.get_image_width();
-        let origin_height = wand.get_image_height();
-
-        // process it
-        let command = Command::Convert {
-            resize: Resize::Percentage(50),
-            format: Format::JPEG,
-            quality: Quality::Preserve,
-        };
-
-        manipulate_by_command(&mut wand, &command).unwrap();
-
-        // write image to blob
-        let processed = wand.write_image_blob("sample2_2.jpg").unwrap();
-
-        // re-read image from blob
-        let wand = MagickWand::new();
-        wand.read_image_blob(processed).unwrap();
-
-        // check image size
-        let target_width = wand.get_image_width();
-        let target_height = wand.get_image_height();
-
-        assert_eq!(origin_width / 2, target_width);
-        assert_eq!(origin_height / 2, target_height);
-    }
-
-    #[test]
     fn get_core_metadata() {
         let tags = vec![
-            "Exif.Image.DateTime".to_string(),
-            "Xmp.xmp.Rating".to_string(),
-            "Xmp.video.MimeType".to_string(),
-            "Exif.GPSInfo.GPSLatitude".to_string(),
-            "Exif.GPSInfo.GPSLongitude".to_string(),
-            "Exif.GPSInfo.GPSAltitude".to_string(),
+            String::from(META_DATETIME),
+            String::from(META_RATING),
+            String::from(META_GPS_LAT),
+            String::from(META_GPS_LON),
         ];
 
-        let path = Path::new("sample.heic");
+        let path = Path::new("/Users/scryner/geota/IMGP2798.heic");
         let (mime, vals) = tags_from_path(path, tags).unwrap();
 
         println!("mime: {}", mime);

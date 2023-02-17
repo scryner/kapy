@@ -138,7 +138,7 @@ impl ToString for Command {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Resize {
     Percentage(u8),
     MPixels(u8),
