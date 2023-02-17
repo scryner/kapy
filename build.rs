@@ -7,12 +7,12 @@ fn main() {
     // compile c files
     cc::Build::new()
         .file("lib/stream.c")
-        .file("lib/add_gps.c")
+        .file("lib/exif.c")
         .include("lib")
         .includes(gexiv2.include_paths)
         .compile("gps");
 
-    println!("cargo:rerun-if-changed=lib/add_gps.c");
+    println!("cargo:rerun-if-changed=lib/exif.c");
     println!("cargo:rerun-if-changed=lib/stream.h");
     println!("cargo:rerun-if-changed=lib/stream.c");
 }

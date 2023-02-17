@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::BufReader;
 use std::time::{Duration, SystemTime};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use bytes::Bytes;
 use chrono::{DateTime, FixedOffset, Utc};
 use gpx::{Gpx, Waypoint};
@@ -196,28 +196,6 @@ impl Pour<Bytes> for GpxStorage {
         let g = gpx::read(reader)?;
 
         self.pour_into(g)
-    }
-}
-
-// native implementation to add gps info
-extern "C" {
-    fn native_add_gps_info(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
-}
-
-// safe implementation to add gps info
-pub fn add_gps_info(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
-    let new_len;
-
-    unsafe {
-        let blob_len = blob.len();
-        let mut out_blob: *mut u8 = std::ptr::null_mut();
-
-        new_len = native_add_gps_info(blob.as_ptr(), blob_len, &mut out_blob, lat, lon, alt);
-        if new_len > 0 {
-            Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
-        } else {
-            Err(anyhow!("Failed to add gps info"))
-        }
     }
 }
 

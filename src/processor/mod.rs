@@ -173,7 +173,7 @@ pub fn clone_image<'a, F>(conf: &Config,
             let lon = waypoint.point().x();
             let alt = waypoint.elevation.unwrap_or(0.0);
 
-            let mut other_blob = gps::add_gps_info(&blob, lat, lon, alt)?;
+            let mut other_blob = image::add_gps_info_to_blob(&blob, lat, lon, alt)?;
             mem::swap::<Vec<u8>>(&mut blob, &mut other_blob);
 
             // early drop other_blob

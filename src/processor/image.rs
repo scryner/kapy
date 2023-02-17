@@ -1,4 +1,5 @@
-use std::ffi::{CStr, CString, c_void};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString, c_void, c_uchar, c_char};
 use std::fs;
 use std::ops::Add;
 use std::path::Path;
@@ -74,8 +75,8 @@ pub enum ProcessState {
 
 pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                   blob: &Vec<u8>, dry_run: bool, when_update: F) -> Result<Statistics>
-where
-F: Fn(ProcessState)
+    where
+        F: Fn(ProcessState)
 {
     let mut wand = MagickWand::new();
     let mut statistics = Statistics::new();
@@ -87,7 +88,7 @@ F: Fn(ProcessState)
     wand.read_image_blob(blob)?;
 
     // get image rating
-    let rating = rating(&wand);
+    let rating = rating_from_wand(&wand);
     let cmd = conf.command(rating);
 
     // make out directory
@@ -131,13 +132,13 @@ F: Fn(ProcessState)
             if !dry_run {
                 let out_path_string = out_path(in_file, &out_dir, Some(&format))?;
                 let out_path = Path::new(&out_path_string);
-                let out_filename_str= out_path.file_name().unwrap().to_str().unwrap();
+                let out_filename_str = out_path.file_name().unwrap().to_str().unwrap();
 
                 if !out_path.exists() {
                     when_update(ProcessState::Rewriting(
                         String::from(in_path_str),
                         String::from(out_filename_str),
-                        cmd.to_string()
+                        cmd.to_string(),
                     ));
 
                     wand.write_image(&out_path_string)?;
@@ -397,7 +398,7 @@ fn image_profile(wand: &MagickWand, name: &str) -> Result<String> {
     value
 }
 
-pub fn rating(wand: &MagickWand) -> i8 {
+pub fn rating_from_wand(wand: &MagickWand) -> i8 {
     let xmp = match image_profile(wand, "xmp") {
         Ok(xmp) => xmp,
         _ => return -1,
@@ -412,6 +413,85 @@ pub fn rating(wand: &MagickWand) -> i8 {
     }
 
     return -1;
+}
+
+// native implementation to add gps info
+extern "C" {
+    fn native_add_gps_info_to_blob(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
+    fn native_get_rating_from_path(path: *const u8) -> i32;
+    fn native_get_tags_from_path(path: *const c_uchar, tags: *mut *mut c_uchar, tag_len: usize) -> *mut *mut c_uchar;
+}
+
+// safe implementation to add gps info
+pub fn add_gps_info_to_blob(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Result<Vec<u8>> {
+    let new_len;
+
+    unsafe {
+        let blob_len = blob.len();
+        let mut out_blob: *mut u8 = std::ptr::null_mut();
+
+        new_len = native_add_gps_info_to_blob(blob.as_ptr(), blob_len, &mut out_blob, lat, lon, alt);
+        if new_len > 0 {
+            Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
+        } else {
+            Err(anyhow!("Failed to add gps info"))
+        }
+    }
+}
+
+// safe implementation to get tags
+pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<HashMap<String, String>> {
+    // prepare to pass tags
+    let tag_len = tags.len();
+    let mut ctags: Vec<Vec<u8>> = tags.iter().map(|s| s.as_bytes().to_vec()).collect();
+    let mut ctags: Vec<*mut c_uchar> = ctags
+        .iter_mut()
+        .map(|vec| vec.as_mut_ptr())
+        .collect();
+
+    let mut vals = Vec::new();
+
+    unsafe {
+        // transform ctags to unsigned char**
+        let mut ctags_ptr: *mut *mut c_uchar = ctags.as_mut_ptr();
+
+        // call native code
+        let path_str = CString::new(path.to_str().unwrap()).unwrap();
+        let vals_ptr = native_get_tags_from_path(path_str.as_ptr() as *const c_uchar, ctags_ptr, tag_len);
+
+        // transform
+        for i in 0..tag_len {
+            let val_ptr = *vals_ptr.offset(i as isize) as *const c_char;
+            if !val_ptr.is_null() {
+                let val_str = CStr::from_ptr(*vals_ptr.offset(i as isize) as *const c_char);
+                let val = val_str.to_str()?.to_string();
+                vals.push(val);
+            } else {
+                vals.push(String::new());
+            }
+        }
+    }
+
+    // make hashmap according to tags
+    let mut m = HashMap::new();
+    for (i, tag) in tags.iter().enumerate() {
+        m.insert(tag.clone(), vals.get(i).unwrap().clone());
+    }
+
+    Ok(m)
+}
+
+// safe implementation to get rating info
+#[allow(dead_code)]
+pub fn rating_from_path(path: &Path) -> i8 {
+    let rating;
+    let path_str = path.to_str().unwrap();
+
+    unsafe {
+        rating = native_get_rating_from_path(path_str.as_ptr());
+    }
+
+    rating as i8
 }
 
 #[allow(dead_code)]
@@ -495,5 +575,23 @@ mod tests {
 
         assert_eq!(origin_width / 2, target_width);
         assert_eq!(origin_height / 2, target_height);
+    }
+
+    #[test]
+    fn get_core_metadata() {
+        let tags = vec![
+            "Exif.Image.DateTime".to_string(),
+            "Xmp.xmp.Rating".to_string(),
+            "Exif.GPSInfo.GPSLatitude".to_string(),
+            "Exif.GPSInfo.GPSLongitude".to_string(),
+            "Exif.GPSInfo.GPSAltitude".to_string(),
+        ];
+
+        let path = Path::new("sample.jpg");
+        let vals = tags_from_path(path, tags).unwrap();
+
+        for (k, v) in vals.iter() {
+            println!("{}: {}", k, v);
+        }
     }
 }
