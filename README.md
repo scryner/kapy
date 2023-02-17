@@ -1,7 +1,8 @@
 kapy
 ====
 
-A simple application to copy images with useful features (to me).
+Kapy is a simple utility designed to copy digital camera photos from an SD card to a disk with transformations.
+This tool streamlines the process of transferring photos from your camera to your computer, while also providing the ability to make any necessary image transformations during the copying process.
 
 - Convert from JPEG to HEIC
 - Merge GPS information into EXIF from .gpx files on Google Drive
@@ -9,7 +10,7 @@ A simple application to copy images with useful features (to me).
 
 ## Usage
 ```shell
-$ kapy clone -c ~/.kapy.yaml /Volumes/Untitled/DCIM/108HASBL ~/images
+$ kapy clone -c ~/.kapy.yaml --from /Volumes/Untitled/DCIM/108HASBL --to ~/images
 ```
 
 ### Configurations
