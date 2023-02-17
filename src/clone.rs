@@ -22,6 +22,29 @@ const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
 const DEFAULT_GPS_MATCH_WITHIN: Duration = Duration::from_secs(5 * 60); // match within 5 min
 
 pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool) {
+    // print info
+    let import_from = conf.import_from().to_str().unwrap();
+    let import_to = conf.import_to().to_str().unwrap();
+    println!("Cloning from {} to {}...", style(import_from).bold().cyan(),
+             style(import_to).bold().green());
+
+    // check path existence
+    if !conf.import_from().exists() {
+        eprintln!("Invalid 'from' directory: not existed");
+        process::exit(1)
+    } else if !conf.import_from().is_dir() {
+        eprintln!("Invalid 'from' directory: it is a file, not directory");
+        process::exit(1)
+    }
+
+    if !conf.import_to().exists() {
+        eprintln!("Invalid 'to' directory: not existed");
+        process::exit(1)
+    } else if !conf.import_to().is_dir() {
+        eprintln!("Invalid 'to' directory: it is a file, not directory");
+        process::exit(1)
+    }
+
     // calculate when to copy started (since the last save to 'conf.to_path')
     let to_be_import_after = match to_be_imported_after(conf.import_to()) {
         Ok(t) => t,
@@ -128,6 +151,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                                          }) {
                 Ok(stat) => {
                     clone_statistics = clone_statistics + stat;
+                    progress.update("files_bar", Update::Incr(None));
                 }
                 Err(e) => {
                     errors.push((entry, e));

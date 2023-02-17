@@ -149,8 +149,8 @@ pub fn clone_image<'a, F>(conf: &Config,
     }
 
     // try to read image
-    let in_file_str = in_file.to_str().unwrap();    // never failed
-    when_update(CloneState::Inspect(String::from(in_file_str)));
+    let in_path_str = in_file.file_name().unwrap().to_str().unwrap();    // never failed
+    when_update(CloneState::Inspect(String::from(in_path_str)));
 
     let image_blob = image::read_image_to_blob(in_file)?;
 
@@ -164,7 +164,7 @@ pub fn clone_image<'a, F>(conf: &Config,
     if !gps_recorded && format.to_lowercase() != "heic" {
         // try to match gps
         // currently, EXIV2 the library to manipulate EXIF under hood is not support HEIF/HEIC
-        when_update(CloneState::AddGps(String::from(in_file_str)));
+        when_update(CloneState::AddGps(String::from(in_path_str)));
 
         let taken_at = taken_at.to_fixed_offset();
         let gpx = gpx.clone();
@@ -187,14 +187,14 @@ pub fn clone_image<'a, F>(conf: &Config,
     // try to process command to manipulate image
     match image::process(conf, in_file, out_dir, &blob, dry_run, |state| {
         match state {
-            ProcessState::Reading(in_file) => {
-                when_update(CloneState::Reading(in_file));
-            },
-            ProcessState::JustCopying(in_file, out_file) => {
-                when_update(CloneState::Copying(in_file, out_file));
-            },
-            ProcessState::Rewriting(in_file, out_file, cmd) => {
-                when_update(CloneState::Converting(in_file, out_file, cmd));
+            ProcessState::Reading(in_path) => {
+                when_update(CloneState::Reading(in_path));
+            }
+            ProcessState::JustCopying(in_path, out_path) => {
+                when_update(CloneState::Copying(in_path, out_path));
+            }
+            ProcessState::Rewriting(in_path, out_path, cmd) => {
+                when_update(CloneState::Converting(in_path, out_path, cmd));
             }
         }
     }) {

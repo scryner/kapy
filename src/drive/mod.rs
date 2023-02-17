@@ -117,6 +117,7 @@ pub struct FileMetadata {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use chrono::Utc;
     use url::form_urlencoded;
     use crate::drive::auth::{CredPath, ListenPort};
 
@@ -165,8 +166,13 @@ mod tests {
         let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::DefaultPath);
         let drive = GoogleDrive::new(auth);
 
-        let q = String::from("name contains 'gpx'");
-        let list_resp = drive.list(&q, 100, None).unwrap();
+        let created_at = Utc::now();
+        let created_at = created_at.format("%Y-%m-%dT%H:%M:%S");
+
+        let q = format!("createdTime < '{}' and mimeType='application/gpx+xml'", created_at);
+        println!("query = {}", q);
+
+        let list_resp = drive.list(&q, 10, None).unwrap();
 
         println!("{:#?}", list_resp);
     }

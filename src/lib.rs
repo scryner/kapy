@@ -33,7 +33,7 @@ struct Cli {
 #[derive(Subcommand, PartialEq, Debug)]
 enum Commands {
     /// Clone images according to policies defined at config file
-    #[command(arg_required_else_help = true)]
+    #[command(arg_required_else_help = false)]
     Clone {
         /// Set origin path to import
         #[arg(long, value_name = "FROM_PATH")]

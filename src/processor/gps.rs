@@ -108,8 +108,12 @@ impl GpxStorage {
         // make query to find gpx files on google drive
         let start: DateTime<Utc> = DateTime::from(start);
         let end: DateTime<Utc> = DateTime::from(end);
-        let q = format!("modifiedTime >= '{}' and createdTime <= '{}' and mimeType='application/gpx+xml",
-                        start.to_rfc3339(), end.to_rfc3339());
+
+        let start = start.format("%Y-%m-%dT%H:%M:%S");
+        let end = end.format("%Y-%m-%dT%H:%M:%S");
+
+        let q = format!("modifiedTime >= '{}' and createdTime <= '{}' and mimeType='application/gpx+xml'",
+                        start, end);
 
         // query to google drive
         let list = drive.list(&q, max_gpx_files, None)?;

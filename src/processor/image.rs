@@ -78,9 +78,9 @@ F: Fn(ProcessState)
     let mut statistics = Statistics::new();
 
     // read image from blob
-    let in_file_str = in_file.to_str().unwrap();
+    let in_path_str = in_file.file_name().unwrap().to_str().unwrap();
 
-    when_update(ProcessState::Reading(String::from(in_file_str)));
+    when_update(ProcessState::Reading(String::from(in_path_str)));
     wand.read_image_blob(blob)?;
 
     // get image rating
@@ -92,7 +92,7 @@ F: Fn(ProcessState)
 
     let out_dir = out_dir
         .join(taken_at.year().to_string())
-        .join(format!("{}-{}-{}", taken_at.year(), taken_at.month(), taken_at.day()));
+        .join(format!("{:04}-{:02}-{:02}", taken_at.year(), taken_at.month(), taken_at.day()));
 
     fs::create_dir_all(&out_dir)?;
 
@@ -101,12 +101,13 @@ F: Fn(ProcessState)
         SaveType::JustCopying => {
             if !dry_run {
                 // just copying
-                let out_path_string = out_path(in_file, &out_dir, None)?;
-                let out_path = Path::new(&out_path_string);
+                let out_path = out_path(in_file, &out_dir, None)?;
+                let out_path = Path::new(&out_path);
+                let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
 
                 when_update(ProcessState::JustCopying(
-                    String::from(in_file_str),
-                    out_path_string.clone()));
+                    String::from(in_path_str),
+                    String::from(out_path_str)));
 
                 fs::copy(in_file, out_path)?;
             }
@@ -121,14 +122,16 @@ F: Fn(ProcessState)
         } => {
             if !dry_run {
                 let out_path = out_path(in_file, &out_dir, Some(&format))?;
+                let out_path = Path::new(&out_path);
+                let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
 
                 when_update(ProcessState::Rewriting(
-                    String::from(in_file_str),
-                    out_path.clone(),
+                    String::from(in_path_str),
+                    String::from(out_path_str),
                     cmd.to_string()
                 ));
 
-                wand.write_image(&out_path)?;
+                wand.write_image(out_path_str)?;
             }
 
             statistics.converted += 1;
