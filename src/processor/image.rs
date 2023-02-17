@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_void, c_uchar, c_char};
+use std::ffi::{CStr, CString, c_void, c_char};
 use std::fs;
 use std::ops::Add;
 use std::path::Path;
@@ -222,6 +222,10 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<&str>) -> Result<Stri
     Ok(String::from(out_path.to_str().unwrap()))    // never failed
 }
 
+// pub struct Inspection {
+//     pub
+// }
+
 pub struct ImageBlob {
     pub blob: Vec<u8>,
     pub format: String,
@@ -419,7 +423,7 @@ pub fn rating_from_wand(wand: &MagickWand) -> i8 {
 extern "C" {
     fn native_add_gps_info_to_blob(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
     fn native_get_rating_from_path(path: *const u8) -> i32;
-    fn native_get_tags_from_path(path: *const c_uchar, tags: *mut *mut c_uchar, tag_len: usize) -> *mut *mut c_uchar;
+    fn native_get_tags_from_path(path: *const c_char, tags: *mut *mut c_char, tag_len: usize) -> *mut *mut c_char;
 }
 
 // safe implementation to add gps info
@@ -440,32 +444,39 @@ pub fn add_gps_info_to_blob(blob: &Vec<u8>, lat: f64, lon: f64, alt: f64) -> Res
 }
 
 // safe implementation to get tags
-pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<HashMap<String, String>> {
+pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<(String, HashMap<String, String>)> {
     // prepare to pass tags
     let tag_len = tags.len();
-    let mut ctags: Vec<Vec<u8>> = tags.iter().map(|s| s.as_bytes().to_vec()).collect();
-    let mut ctags: Vec<*mut c_uchar> = ctags
+    let mut ctags: Vec<CString> = tags.iter().map(|s| CString::new(s.as_str()).unwrap()).collect();
+    let mut ctags: Vec<*mut c_char> = ctags
         .iter_mut()
-        .map(|vec| vec.as_mut_ptr())
+        .map(|vec| vec.as_ptr() as *mut c_char)
         .collect();
 
     let mut vals = Vec::new();
+    let mut mime = String::new();
 
     unsafe {
         // transform ctags to unsigned char**
-        let mut ctags_ptr: *mut *mut c_uchar = ctags.as_mut_ptr();
+        let ctags_ptr: *mut *mut c_char = ctags.as_mut_ptr();
 
         // call native code
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
-        let vals_ptr = native_get_tags_from_path(path_str.as_ptr() as *const c_uchar, ctags_ptr, tag_len);
+        let vals_ptr = native_get_tags_from_path(path_str.as_ptr(), ctags_ptr, tag_len);
 
         // transform
-        for i in 0..tag_len {
+        for i in 0..tag_len+1 {
             let val_ptr = *vals_ptr.offset(i as isize) as *const c_char;
             if !val_ptr.is_null() {
                 let val_str = CStr::from_ptr(*vals_ptr.offset(i as isize) as *const c_char);
                 let val = val_str.to_str()?.to_string();
-                vals.push(val);
+
+                if i == tag_len {
+                    // at last, we added mime type from native code
+                    mime = val;
+                } else {
+                    vals.push(val);
+                }
             } else {
                 vals.push(String::new());
             }
@@ -478,7 +489,7 @@ pub fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<HashMap<String, 
         m.insert(tag.clone(), vals.get(i).unwrap().clone());
     }
 
-    Ok(m)
+    Ok((mime, m))
 }
 
 // safe implementation to get rating info
@@ -582,13 +593,16 @@ mod tests {
         let tags = vec![
             "Exif.Image.DateTime".to_string(),
             "Xmp.xmp.Rating".to_string(),
+            "Xmp.video.MimeType".to_string(),
             "Exif.GPSInfo.GPSLatitude".to_string(),
             "Exif.GPSInfo.GPSLongitude".to_string(),
             "Exif.GPSInfo.GPSAltitude".to_string(),
         ];
 
-        let path = Path::new("sample.jpg");
-        let vals = tags_from_path(path, tags).unwrap();
+        let path = Path::new("sample.heic");
+        let (mime, vals) = tags_from_path(path, tags).unwrap();
+
+        println!("mime: {}", mime);
 
         for (k, v) in vals.iter() {
             println!("{}: {}", k, v);

@@ -34,9 +34,7 @@ impl CloneStatistics {
     }
 
     /*
-    ---
-    123 total images
-    120 succeed / 3 failed
+    123 total images (120 succeed / 3 failed)
     ---
     110 added gps info
      10 just copied

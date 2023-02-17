@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <gexiv2/gexiv2.h>
 #include "stream.h"
 
@@ -93,11 +94,13 @@ int native_get_rating_from_path(const char *path) {
     return result;
 }
 
- unsigned char** native_get_tags_from_path(const char *path, unsigned char **tags, size_t tag_len) {
+ char** native_get_tags_from_path(const char *path, char **tags, size_t tag_len) {
     GError *error = NULL;
-    unsigned char **vals = NULL;
-    unsigned char *tag = NULL;
-    unsigned char *val = NULL;
+    char **vals = NULL;
+    char *tag = NULL;
+    char *val = NULL;
+    const gchar *mime_type = NULL;
+    char *copied_mime = NULL;
     size_t i = 0;
 
     GExiv2Metadata *meta = gexiv2_metadata_new();
@@ -110,13 +113,23 @@ int native_get_rating_from_path(const char *path) {
             break;
         }
 
-        vals = (unsigned char**) malloc(sizeof(unsigned char*) * tag_len);
-        memset(vals, 0, sizeof(unsigned char*) * tag_len);
+        vals = (char**) malloc(sizeof(char*) * (tag_len+1));
+        memset(vals, 0, sizeof(char*) * (tag_len+1));
 
+        // get mime type
+        mime_type = (const char*) gexiv2_metadata_get_mime_type(meta);
+        if (mime_type != NULL) {
+            copied_mime = (char*) malloc(sizeof(char) * strlen(mime_type));
+            strncpy(copied_mime, mime_type, strlen(mime_type));
+            copied_mime[strlen(mime_type)] = '\0';
+            vals[tag_len] = copied_mime;
+        }
+
+        // get tags
         for (i = 0; i < tag_len; i++) {
             // try to get tag
             tag = tags[i];
-            val = (unsigned char*) gexiv2_metadata_try_get_tag_string(meta, (char*)tag, &error);
+            val = (char*) gexiv2_metadata_try_get_tag_string(meta, tag, &error);
             if (error != NULL) {
                 fprintf(stderr, "Failed to read tag rating : %s\n", error->message);
                 break;
