@@ -6,12 +6,14 @@ mod config;
 mod processor;
 mod drive;
 mod progress;
+mod login;
 
 use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
 use crate::config::Config;
+use crate::drive::auth::ListenPort;
 
 #[derive(Parser)]
 #[command(name = "kapy")]
@@ -58,6 +60,13 @@ enum Commands {
         force: bool,
     },
 
+    /// Login to google drive
+    Login {
+        /// Listen port to exchange token for OAuth2.0
+        #[arg(short, long)]
+        listen_port: Option<i32>,
+    },
+
     /// Clean credentials
     Clean,
 }
@@ -88,7 +97,7 @@ pub fn run() {
     let cred_path = cli.cred.as_deref().unwrap_or(default_cred_path.as_ref());
 
     match &cli.command {
-        Commands::Clone { from, to, ignore_geotag , dry_run} => {
+        Commands::Clone { from, to, ignore_geotag, dry_run } => {
             if let Some(from) = from {
                 conf.set_import_from(from.clone());
             }
@@ -101,6 +110,14 @@ pub fn run() {
         }
         Commands::Clean => {
             return clean::do_clean(cred_path);
+        }
+        Commands::Login { listen_port } => {
+            let listen_port = match *listen_port {
+                Some(port) => ListenPort::Port(port),
+                None => ListenPort::DefaultPort,
+            };
+
+            return login::do_login(cred_path, listen_port);
         }
         _ => {
             // never reached

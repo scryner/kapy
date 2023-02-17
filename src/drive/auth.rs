@@ -239,7 +239,6 @@ impl GoogleAuthenticator {
 
                 match token_response {
                     Ok(token_response) => {
-                        println!("{:#?}", token_response);  // TODO: remove it
                         let ac = token_response.access_token().clone();
                         self.set_token(token_response);
 
@@ -260,8 +259,6 @@ impl GoogleAuthenticator {
         let t = Rc::clone(&self.token);
         let mut t = RefCell::borrow_mut(&t);
         let now = SystemTime::now();
-
-        println!("{:#?}", token_response); // TODO: remove
 
         // make token
         let token = Token::new(token_response, now);
