@@ -11,6 +11,7 @@ use magick_rust::{MagickWand, bindings};
 use crate::config::{Command, Config, Quality, Resize};
 
 pub struct Statistics {
+    pub skipped: usize,
     pub copying: usize,
     pub converted: usize,
     pub converted_statistics: ConvertedStatistics,
@@ -19,6 +20,7 @@ pub struct Statistics {
 impl Statistics {
     fn new() -> Self {
         Self {
+            skipped: 0,
             copying: 0,
             converted: 0,
             converted_statistics: ConvertedStatistics {
@@ -36,6 +38,7 @@ impl Add for Statistics {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self {
+            skipped: self.skipped + rhs.skipped,
             copying: self.copying + rhs.copying,
             converted: self.converted + rhs.converted,
             converted_statistics: self.converted_statistics + rhs.converted_statistics,
@@ -105,14 +108,19 @@ F: Fn(ProcessState)
                 let out_path = Path::new(&out_path);
                 let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
 
-                when_update(ProcessState::JustCopying(
-                    String::from(in_path_str),
-                    String::from(out_path_str)));
+                if !out_path.exists() {
+                    when_update(ProcessState::JustCopying(
+                        String::from(in_path_str),
+                        String::from(out_path_str)));
 
-                fs::copy(in_file, out_path)?;
+                    fs::copy(in_file, out_path)?;
+                    statistics.copying += 1;
+                } else {
+                    statistics.skipped += 1;
+                }
+            } else {
+                statistics.skipped += 1;
             }
-
-            statistics.copying += 1;
         }
         SaveType::NeedRewrite {
             resize,
@@ -121,30 +129,36 @@ F: Fn(ProcessState)
             format
         } => {
             if !dry_run {
-                let out_path = out_path(in_file, &out_dir, Some(&format))?;
-                let out_path = Path::new(&out_path);
-                let out_path_str = out_path.file_name().unwrap().to_str().unwrap();
+                let out_path_string = out_path(in_file, &out_dir, Some(&format))?;
+                let out_path = Path::new(&out_path_string);
+                let out_filename_str= out_path.file_name().unwrap().to_str().unwrap();
 
-                when_update(ProcessState::Rewriting(
-                    String::from(in_path_str),
-                    String::from(out_path_str),
-                    cmd.to_string()
-                ));
+                if !out_path.exists() {
+                    when_update(ProcessState::Rewriting(
+                        String::from(in_path_str),
+                        String::from(out_filename_str),
+                        cmd.to_string()
+                    ));
 
-                wand.write_image(out_path_str)?;
-            }
+                    wand.write_image(&out_path_string)?;
+                    statistics.converted += 1;
 
-            statistics.converted += 1;
-            if resize { statistics.converted_statistics.resized += 1 };
-            if adjust_quality { statistics.converted_statistics.adjust_quality += 1 };
-            if convert {
-                match format.to_lowercase().as_str() {
-                    "jpeg" | "jpg" => statistics.converted_statistics.converted_to_jpeg += 1,
-                    "heic" => statistics.converted_statistics.converted_to_heic += 1,
-                    _ => {
-                        panic!("never reached! wrong format '{}'", format);
+                    if resize { statistics.converted_statistics.resized += 1 };
+                    if adjust_quality { statistics.converted_statistics.adjust_quality += 1 };
+                    if convert {
+                        match format.to_lowercase().as_str() {
+                            "jpeg" | "jpg" => statistics.converted_statistics.converted_to_jpeg += 1,
+                            "heic" => statistics.converted_statistics.converted_to_heic += 1,
+                            _ => {
+                                panic!("never reached! wrong format '{}'", format);
+                            }
+                        }
                     }
+                } else {
+                    statistics.skipped += 1;
                 }
+            } else {
+                statistics.skipped += 1;
             }
         }
     }

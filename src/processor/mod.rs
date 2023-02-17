@@ -47,12 +47,10 @@ impl CloneStatistics {
       -  0 converted to JPEG
      */
     pub fn print_with_error(&self, errors: &Vec<(&DirEntry, Error)>) {
-        println!("{}", style("---").dim());
-
         let error_len = errors.len();
         let width = max_width(vec![self.total_cloned, error_len]);
-        println!("{:>width$} total images", style(self.total_cloned).blue());
-        println!("{:>width$} succeed / {} failed ",
+        print!("{:>width$} total images", style(self.total_cloned).blue());
+        println!(" ({:>width$} succeed / {} failed)",
                  style(self.total_cloned - error_len).green(),
                  if error_len > 0 { style(error_len).red() } else { style(error_len).dim() });
 
@@ -61,7 +59,8 @@ impl CloneStatistics {
         println!("{:>width$} added gps info", self.gps_added);
         if let Some(image_stat) = &self.image {
             println!("{:>width$} just copied", image_stat.copying);
-            println!("{:>width$} processed", image_stat.converted);
+            println!("{:>width$} skipped", image_stat.skipped);
+            println!("{:>width$} converted", image_stat.converted);
 
             let converted_stat = &image_stat.converted_statistics;
 
