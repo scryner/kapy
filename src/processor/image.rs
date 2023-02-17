@@ -386,7 +386,7 @@ fn image_profile(wand: &MagickWand, name: &str) -> Result<String> {
 pub fn rating(wand: &MagickWand) -> i8 {
     let xmp = match image_profile(wand, "xmp") {
         Ok(xmp) => xmp,
-        _ => return 0,
+        _ => return -1,
     };
 
     let re = Regex::new(r#"xmp:Rating="(?P<rating>[0-9]+)""#).unwrap();
@@ -397,7 +397,7 @@ pub fn rating(wand: &MagickWand) -> i8 {
         return val;
     }
 
-    return 0;
+    return -1;
 }
 
 #[allow(dead_code)]

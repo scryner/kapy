@@ -126,6 +126,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
         ]);
 
         for entry in import_entries.iter() {
+            progress.update("files_bar", Update::Incr(None));
             let gps_search = Rc::clone(&gps_search);
 
             match processor::clone_image(&conf, entry.path(), conf.import_to(),
@@ -151,7 +152,6 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                                          }) {
                 Ok(stat) => {
                     clone_statistics = clone_statistics + stat;
-                    progress.update("files_bar", Update::Incr(None));
                 }
                 Err(e) => {
                     errors.push((entry, e));
