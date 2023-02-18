@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Add;
 use std::rc::Rc;
@@ -21,6 +22,9 @@ use crate::drive::helper::FileCredentials;
 // So, we can embed it
 const CLIENT_ID: &str = "308241855989-j1avgc71ptfakdihs3uj7pbjjric3bpj.apps.googleusercontent.com";
 const CLIENT_SECRET: &str = "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";
+
+const CLIENT_ID_ENV_KEY: &str = "CLIENT_ID";
+const CLIENT_SECRET_ENV_KEY: &str = "CLIENT_SECRET";
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
@@ -112,10 +116,20 @@ impl GoogleAuthenticator {
             format!("http://127.0.0.1:{}", listen_port))
             .unwrap();
 
+        let client_id = match env::var(CLIENT_ID_ENV_KEY) {
+            Ok(val) => val,
+            _ => String::from(CLIENT_ID),
+        };
+
+        let client_secret = match env::var(CLIENT_SECRET_ENV_KEY) {
+            Ok(val) => val,
+            _ => String::from(CLIENT_SECRET),
+        };
+
         // create a http client
         let client = BasicClient::new(
-            ClientId::new(String::from(CLIENT_ID)),
-            Some(ClientSecret::new(String::from(CLIENT_SECRET))),
+            ClientId::new(client_id),
+            Some(ClientSecret::new(client_secret)),
             auth_url.clone(),
             Some(token_url.clone()),
         )
