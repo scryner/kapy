@@ -26,7 +26,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
     // print info
     let import_from = conf.import_from().to_str().unwrap();
     let import_to = conf.import_to().to_str().unwrap();
-    println!("Cloning from {} to {}...", style(import_from).bold().cyan(),
+    println!("Cloning from {} to {}...\n", style(import_from).bold().cyan(),
              style(import_to).bold().green());
 
     // check path existence
