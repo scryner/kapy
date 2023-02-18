@@ -21,7 +21,7 @@ const MAX_DEPTH: usize = 10;
 const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
 const DEFAULT_GPS_MATCH_WITHIN: Duration = Duration::from_secs(5 * 60); // match within 5 min
 
-pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool, force_after: Option<String>) {
+pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool, after: Option<String>) {
     // print info
     let import_from = conf.import_from().to_str().unwrap();
     let import_to = conf.import_to().to_str().unwrap();
@@ -46,7 +46,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
     }
 
     // calculate when to copy started (since the last save to 'conf.to_path')
-    let to_be_import_after = match force_after {
+    let to_be_import_after = match after {
         Some(after) => {
             // valid: YYYY or YYYY-MM-DD or YYYY-MM
             match system_time_from_str(&after) {
@@ -298,7 +298,7 @@ fn system_time_from_str(s: &str) -> Result<SystemTime> {
     if re_only_year.is_match(s) {
         naive_str = format!("{}-01-01 00:00:00", s);
     } else if re_year_month.is_match(s) {
-        let captures = re_year_month_day.captures(s).unwrap();
+        let captures = re_year_month.captures(s).unwrap();
 
         let year = captures.name("year").unwrap().as_str();
         let month = captures.name("month").unwrap().as_str();
