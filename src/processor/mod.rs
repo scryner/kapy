@@ -41,7 +41,7 @@ impl CloneStatistics {
         let error_len = errors.len();
         let width = max_width(vec![self.total_cloned, error_len]);
         print!("{:>5} total images", style(self.total_cloned).cyan().bold());
-        println!(" ({:>width$} succeed / {} failed)",
+        println!(" ({} succeed / {} failed)",
                  style(total_images - error_len).green(),
                  if error_len > 0 { style(error_len).red() } else { style(error_len).dim() });
 

@@ -92,6 +92,8 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
             PanelType::Message("state"),
         ]);
 
+        let mut inspection_failed = 0;
+
         for entry in import_entries.iter() {
             progress.update("files_bar", Update::Incr(None));
 
@@ -99,19 +101,24 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
             let path_str = path.to_str().unwrap();  // never failed
             progress.update("state", Update::Incr(Some(format!("{}: inspecting...", style(path_str).bold()))));
 
-            let inspection = match image::inspect_image_from_path(path) {
-                Ok(inspection) => inspection,
+            match image::inspect_image_from_path(path) {
+                Ok(inspection) => {
+                    inspections.push(inspection);
+                }
                 Err(e) => {
                     eprintln!("Failed to inspection image '{}': {}", path_str, e);
-                    process::exit(1);
+                    inspection_failed += 1;
                 }
             };
-
-            inspections.push(inspection);
         }
 
         progress.finish_all();
-        progress.println(format!("{:>5} files are inspected", style(inspections.len()).cyan().bold()));
+        progress.println(format!("{:>5} files are inspected ({} total / {} succeed / {} failed)",
+                                 style(inspections.len()).cyan().bold(),
+                                 style(import_entries.len()).green(),
+                                 style(inspections.len()).cyan(),
+                                 if inspection_failed > 0 { style(inspection_failed).red() } else { style(0).dim() }
+        ));
         progress.clear();
     }
 
@@ -286,6 +293,15 @@ fn walk_and_filter_only_supported_images(dir: &Path) -> Vec<DirEntry> {
 
             let path = entry.path();
             if !path.is_file() {
+                return None;
+            }
+
+            if let Some(filename) = path.file_stem() {
+                match filename.to_str() {
+                    Some(s) if String::from(s).starts_with(".") => return None, // filter if file is hidden
+                    _ => (),
+                }
+            } else {
                 return None;
             }
 
