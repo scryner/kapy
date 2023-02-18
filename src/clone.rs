@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use anyhow::{anyhow, Result};
 use core::time::Duration;
 use std::rc::Rc;
-use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Local, LocalResult, NaiveDateTime, TimeZone};
 use console::style;
 use regex::Regex;
 use walkdir::{WalkDir, DirEntry};
@@ -56,7 +56,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                     process::exit(1);
                 }
             }
-        },
+        }
         None => {
             match to_be_imported_after(conf.import_to()) {
                 Ok(t) => t,
@@ -95,8 +95,13 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
     let gps_search: Rc<Box<dyn GpsSearch>> = if ignore_geotag {
         Rc::new(Box::new(NoopGpsSearch))
     } else {
+        // adjust time to more flexibility (+ 1 hour)
+        let start = oldest_created_at - Duration::from_secs(3600);
+        let end = most_recent_created_at + Duration::from_secs(3600);
+
         // make a progress
-        println!("Preparing GPX storage from google drive...");
+        println!("Preparing GPX from google drive: {} ~ {}",
+                 style(start.to_string()).cyan(), style(end.to_string()).cyan());
         let progress = Progress::new(vec![
             PanelType::Message("gpx_filename"),
         ]);
@@ -107,7 +112,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
         let auth = GoogleAuthenticator::new(ListenPort::DefaultPort, CredPath::Path(cred_path));
         let drive = GoogleDrive::new(auth);
 
-        match GpxStorage::from_google_drive(&drive, oldest_created_at, most_recent_created_at,
+        match GpxStorage::from_google_drive(&drive, start, end,
                                             DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE, DEFAULT_GPS_MATCH_WITHIN,
                                             |filename| {
                                                 progress.update("gpx_filename",
@@ -330,6 +335,17 @@ fn system_time_from_str(s: &str) -> Result<SystemTime> {
     Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(local_dt.timestamp() as u64))
 }
 
+trait FormattedLocalTime {
+    fn to_string(&self) -> String;
+}
+
+impl FormattedLocalTime for SystemTime {
+    fn to_string(&self) -> String {
+        let dt: DateTime<Local> = DateTime::from(*self);
+        dt.format("%Y:%m:%d %H:%M:%S%:::z").to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +361,11 @@ mod tests {
         let st = system_time_from_str(s).unwrap();
 
         println!("{} => {:?}", s, st);
+    }
+
+    #[test]
+    fn formatted_system_time() {
+        let now = SystemTime::now();
+        println!("{}", now.to_string());
     }
 }
