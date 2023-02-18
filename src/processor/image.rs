@@ -175,6 +175,12 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                     cmd.to_string(),
                 ));
 
+                if let Some(ref target_format) = rewrite_info.target_format {
+                    if target_format.as_str() == HEIC_FORMAT {
+                        wand.auto_orient();
+                    }
+                }
+
                 wand.write_image(&out_path_string)?;
                 statistics.converted += 1;
 

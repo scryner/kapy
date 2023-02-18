@@ -132,7 +132,7 @@ impl ToString for Command {
             Command::Convert {
                 resize, format, quality
             } => {
-                format!("{} / {} / {}", resize.to_string(), format.to_string(), quality.to_string())
+                format!("{} / {} / {}", format.to_string(), resize.to_string(), quality.to_string())
             }
         }
     }
