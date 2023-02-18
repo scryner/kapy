@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::{fs, process};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Result};
 use core::time::Duration;
 use std::rc::Rc;
@@ -14,7 +14,8 @@ use crate::drive::GoogleDrive;
 use crate::drive::auth::{CredPath, GoogleAuthenticator, ListenPort};
 use crate::config::Config;
 use crate::processor;
-use crate::processor::{CloneStatistics, CloneState};
+use crate::processor::{CloneStatistics, CloneState, image};
+use crate::processor::image::Inspection;
 use crate::progress::{PanelType, Progress, Update};
 
 const MAX_DEPTH: usize = 10;
@@ -82,8 +83,40 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
         None => import_entries
     };
 
+    // inspection for each images
+    let mut inspections = Vec::new();
+    {
+        println!("{} {}", style("Inspecting").green().bold(), import_from);
+        let progress = Progress::new(vec![
+            PanelType::Bar("files_bar", import_entries.len() as u64),
+            PanelType::Message("state"),
+        ]);
+
+        for entry in import_entries.iter() {
+            progress.update("files_bar", Update::Incr(None));
+
+            let path = entry.path();
+            let path_str = path.to_str().unwrap();  // never failed
+            progress.update("state", Update::Incr(Some(format!("{}: inspecting...", style(path_str).bold()))));
+
+            let inspection = match image::inspect_image_from_path(path) {
+                Ok(inspection) => inspection,
+                Err(e) => {
+                    eprintln!("Failed to inspection image '{}': {}", path_str, e);
+                    process::exit(1);
+                }
+            };
+
+            inspections.push(inspection);
+        }
+
+        progress.finish_all();
+        progress.println(format!("{:>5} files are inspected", style(inspections.len()).cyan().bold()));
+        progress.clear();
+    }
+
     // calculate first date and end date among import files
-    let (oldest_created_at, most_recent_created_at) = match oldest_and_most_recent_created(&import_entries) {
+    let (oldest_created_at, most_recent_created_at) = match oldest_and_most_recent_taken_at(&inspections) {
         Ok((oldest, most_recent)) => (oldest, most_recent),
         Err(e) => {
             eprintln!("Failed to find oldest and most recent files: {}", e);
@@ -100,7 +133,8 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
         let end = most_recent_created_at + Duration::from_secs(3600);
 
         // make a progress
-        println!("Preparing GPX from google drive: {} ~ {}",
+        println!("{} from google drive: {} ~ {}",
+                 style("Preparing GPX").green().bold(),
                  style(start.to_string()).cyan(), style(end.to_string()).cyan());
         let progress = Progress::new(vec![
             PanelType::Message("gpx_filename"),
@@ -121,7 +155,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                                             }) {
             Ok(search) => {
                 progress.finish_all();
-                progress.println(format!("{} gpx files are retrieved", style(count).bold()));
+                progress.println(format!("{:>5} gpx files are retrieved", style(count).cyan().bold()));
                 progress.clear();
 
                 Rc::new(Box::new(search))
@@ -140,22 +174,21 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
 
     // make progress
     {
+        println!("{} {}", style("Cloning").green().bold(), import_to);
         let progress = Progress::new(vec![
             PanelType::Bar("files_bar", import_entries.len() as u64),
             PanelType::Message("state"),
         ]);
 
-        for entry in import_entries.iter() {
+        for inspection in inspections.iter() {
             progress.update("files_bar", Update::Incr(None));
             let gps_search = Rc::clone(&gps_search);
 
-            match processor::clone_image(&conf, entry.path(), conf.import_to(),
+            match processor::clone_image(&conf, &inspection.path, conf.import_to(),
+                                         inspection,
                                          gps_search, dry_run,
                                          |state| {
                                              match state {
-                                                 CloneState::Inspect(in_path) => {
-                                                     progress.update("state", Update::Incr(Some(format!("{}: inspecting...", style(in_path).bold()))));
-                                                 }
                                                  CloneState::AddGps(in_path) => {
                                                      progress.update("state", Update::Incr(Some(format!("{}: adding gps info...", style(in_path).bold()))));
                                                  }
@@ -174,7 +207,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                     clone_statistics = clone_statistics + stat;
                 }
                 Err(e) => {
-                    errors.push((entry, e));
+                    errors.push((inspection, e));
                 }
             }
         }
@@ -191,18 +224,29 @@ fn import_entries(dir: &Path) -> Vec<DirEntry> {
     walk_and_filter_only_supported_images(dir)
 }
 
-fn oldest_and_most_recent_created(entries: &Vec<DirEntry>) -> Result<(SystemTime, SystemTime)> {
+fn oldest_and_most_recent_taken_at(entries: &Vec<Inspection>) -> Result<(SystemTime, SystemTime)> {
     let created_at_list = entries.iter()
-        .map(|entry| entry.metadata().unwrap().created().unwrap())
-        .collect::<Vec<SystemTime>>();
+        .map(|entry| entry.taken_at.timestamp())
+        .collect::<Vec<i64>>();
 
     let oldest = created_at_list.iter().min();
     let most_recent = created_at_list.iter().max();
 
-    if oldest == None || most_recent == None {
-        Err(anyhow!("Failed to find oldest and most recent file"))
+    if let (Some(oldest), Some(most_recent)) = (oldest, most_recent) {
+        Ok((oldest.to_system_time(), most_recent.to_system_time()))
     } else {
-        Ok((oldest.unwrap().clone(), most_recent.unwrap().clone()))
+        Err(anyhow!("Failed to find oldest and most recent file"))
+    }
+}
+
+trait ToSystemTime {
+    fn to_system_time(&self) -> SystemTime;
+}
+
+impl ToSystemTime for i64 {
+    fn to_system_time(&self) -> SystemTime {
+        let duration_since_epoch = Duration::from_secs(*self as u64);
+        UNIX_EPOCH + duration_since_epoch
     }
 }
 

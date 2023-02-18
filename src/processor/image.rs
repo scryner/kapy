@@ -3,7 +3,7 @@ use std::ffi::{CStr, CString, c_void, c_char};
 use std::fs;
 use std::mem::swap;
 use std::ops::Add;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Once;
 
 use regex::Regex;
@@ -266,6 +266,7 @@ const META_GPS_LAT: &str = "Exif.GPSInfo.GPSLatitude";
 const META_GPS_LON: &str = "Exif.GPSInfo.GPSLongitude";
 
 pub struct Inspection {
+    pub path: PathBuf,
     pub format: String,
     pub gps_recorded: bool,
     pub taken_at: DateTime<Local>,
@@ -328,6 +329,7 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     }
 
     Ok(Inspection {
+        path: path.to_path_buf(),
         format: format.to_string(),
         gps_recorded,
         taken_at,

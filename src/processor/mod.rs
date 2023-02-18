@@ -9,10 +9,9 @@ use console::style;
 use anyhow::{Result, Error, anyhow};
 use chrono::{DateTime, FixedOffset, Local};
 
-use walkdir::DirEntry;
 use crate::config::Config;
 use crate::processor::gps::GpsSearch;
-use crate::processor::image::{HEIC_FORMAT, ProcessState, Statistics as ImageStatistics};
+use crate::processor::image::{HEIC_FORMAT, Inspection, ProcessState, Statistics as ImageStatistics};
 
 pub struct CloneStatistics {
     pub total_cloned: usize,
@@ -38,10 +37,10 @@ impl CloneStatistics {
       -  90 converted to HEIC
       -   0 converted to JPEG
      */
-    pub fn print_with_error(&self, total_images: usize, errors: &Vec<(&DirEntry, Error)>) {
+    pub fn print_with_error(&self, total_images: usize, errors: &Vec<(&Inspection, Error)>) {
         let error_len = errors.len();
         let width = max_width(vec![self.total_cloned, error_len]);
-        print!("{:>width$} total images", style(self.total_cloned).blue());
+        print!("{:>5} total images", style(self.total_cloned).cyan().bold());
         println!(" ({:>width$} succeed / {} failed)",
                  style(total_images - error_len).green(),
                  if error_len > 0 { style(error_len).red() } else { style(error_len).dim() });
@@ -71,9 +70,9 @@ impl CloneStatistics {
         if errors.len() > 0 {
             println!("{}", style("---").dim());
             println!("Errors:");
-            for (entry, e) in errors.iter() {
+            for (inspection, e) in errors.iter() {
                 println!("{} {}: {}", style("-").red(),
-                         style(entry.path().to_str().unwrap()).red().bold(), e);
+                         style(inspection.path.to_str().unwrap()).red().bold(), e);
             }
         }
     }
@@ -113,7 +112,6 @@ impl Add for CloneStatistics {
 }
 
 pub enum CloneState {
-    Inspect(String),
     AddGps(String),
     Reading(String),
     Copying(String, String),
@@ -122,6 +120,7 @@ pub enum CloneState {
 
 pub fn clone_image<'a, F>(conf: &Config,
                           in_file: &Path, out_dir: &Path,
+                          inspection: &Inspection,
                           gpx: Rc<Box<dyn GpsSearch + 'a>>,
                           dry_run: bool,
                           when_update: F) -> Result<CloneStatistics>
@@ -138,11 +137,6 @@ pub fn clone_image<'a, F>(conf: &Config,
     if !out_dir.is_dir() {
         return Err(anyhow!("Output path '{}' is not directory", in_file.to_str().unwrap()));
     }
-
-    // try to inspect metadata from image file
-    let in_path_str = in_file.file_name().unwrap().to_str().unwrap();    // never failed
-    when_update(CloneState::Inspect(String::from(in_path_str)));
-    let inspection = image::inspect_image_from_path(in_file)?;
 
     // retrieve gps data
     let mut gps_info = None;
