@@ -162,6 +162,8 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
             if let Some(percentage) = rewrite_info.quality {
                 wand.set_image_compression_quality(percentage as usize)?;
                 statistics.converted_statistics.adjust_quality += 1;
+            } else if let Some(ref _target_format) = rewrite_info.target_format {
+                wand.set_image_compression_quality(95)?; // set compression quality to 95, because default value is 92
             }
 
             // rewrite
