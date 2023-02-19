@@ -438,6 +438,11 @@ fn determine_resize(img_width: usize, img_height: usize, resize: &Resize) -> Opt
         Resize::MPixels(m_pixels) => {
             let target_pixels = *m_pixels as usize * 1000000;
             let orig_pixels = img_width * img_height;
+
+            if target_pixels >= orig_pixels {
+                return None;
+            }
+
             let scale_factor = (target_pixels as f64 / orig_pixels as f64).sqrt();
 
             let width = (img_width as f64 * scale_factor).round() as usize;
