@@ -39,7 +39,9 @@ OR
 $ CLIENT_ID={YOUR_CLIENT_ID} CLIENT_SECRET={YOUR_SECRET} cargo build
 ```
 
-The Google Drive API has a strict authorization process since it accesses users' sensitive information. This application was originally created for my personal use, and it is difficult to comply with the strict authorization process. If necessary, you should refer to the following document to generate Google OAuth 2.0 credentials:
+The Google Drive API has a strict application approval process since it can access users' sensitive information.
+This application was originally created for my personal use, and it is difficult to comply with Google's strict approval process.
+You should refer to the following document to generate your own Google OAuth 2.0 credentials:
 
 https://developers.google.com/identity/protocols/oauth2/native-app
 
