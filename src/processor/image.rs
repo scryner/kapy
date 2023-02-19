@@ -621,9 +621,6 @@ pub fn image_properties(wand: &MagickWand, name: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config, processor};
-    use config::Command;
-    use crate::config::Format;
     use super::*;
 
     #[test]

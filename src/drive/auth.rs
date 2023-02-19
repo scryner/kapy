@@ -35,13 +35,17 @@ const DEFAULT_LISTEN_PORT: i32 = 18080;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Token {
+    client_id: String,
+    client_secret: String,
     token_response: BasicTokenResponse,
     created_at: u64,
 }
 
 impl Token {
-    fn new(token_response: BasicTokenResponse, created_at: SystemTime) -> Self {
+    fn new(client_id: &str, client_secret: &str, token_response: BasicTokenResponse, created_at: SystemTime) -> Self {
         Self {
+            client_id: String::from(client_id),
+            client_secret: String::from(client_secret),
             token_response,
             created_at: created_at.duration_since(UNIX_EPOCH).unwrap().as_secs(),
         }
@@ -100,6 +104,8 @@ impl ListenPort {
 }
 
 pub struct GoogleAuthenticator {
+    client_id: String,
+    client_secret: String,
     client: Client,
     token: Rc<RefCell<Option<Token>>>,
     cred_path: Rc<RefCell<PathBuf>>,
@@ -116,33 +122,38 @@ impl GoogleAuthenticator {
             format!("http://127.0.0.1:{}", listen_port))
             .unwrap();
 
-        let client_id = match env::var(CLIENT_ID_ENV_KEY) {
+        // try to read client_id and client_secret from environment
+        let mut client_id = match env::var(CLIENT_ID_ENV_KEY) {
             Ok(val) => val,
             _ => String::from(CLIENT_ID),
         };
 
-        let client_secret = match env::var(CLIENT_SECRET_ENV_KEY) {
+        let mut client_secret = match env::var(CLIENT_SECRET_ENV_KEY) {
             Ok(val) => val,
             _ => String::from(CLIENT_SECRET),
         };
 
+        // try to read cred from file
+        let mut token = None;
+        if let Ok(t) = FileCredentials::read_file(&cred_path.path()) {
+            client_id = t.client_id.clone();
+            client_secret = t.client_secret.clone();
+            token = Some(t);
+        }
+
         // create a http client
         let client = BasicClient::new(
-            ClientId::new(client_id),
-            Some(ClientSecret::new(client_secret)),
+            ClientId::new(client_id.clone()),
+            Some(ClientSecret::new(client_secret.clone())),
             auth_url.clone(),
             Some(token_url.clone()),
         )
             .set_redirect_uri(redirect_url)
             .set_revocation_uri(revocation_url.clone());
 
-        // try to read cred from file
-        let mut token = None;
-        if let Ok(t) = FileCredentials::read_file(&cred_path.path()) {
-            token = Some(t);
-        }
-
         Self {
+            client_id,
+            client_secret,
             client,
             token: Rc::new(RefCell::new(token)),
             cred_path: Rc::new(RefCell::new(cred_path.path().to_path_buf())),
@@ -275,7 +286,7 @@ impl GoogleAuthenticator {
         let now = SystemTime::now();
 
         // make token
-        let token = Token::new(token_response, now);
+        let token = Token::new(&self.client_id, &self.client_secret, token_response, now);
 
         // write to cred path
         let cred_path = Rc::clone(&self.cred_path);
@@ -395,7 +406,7 @@ mod tests {
         let token_response =
             BasicTokenResponse::new(AccessToken::new(String::from("access_token")), BasicTokenType::Bearer, EmptyExtraTokenFields {});
 
-        let token = Token::new(token_response, SystemTime::now());
+        let token = Token::new("client_id", "client_secret", token_response, SystemTime::now());
 
         // marshal token
         let marshaled = FileCredentials::marshal(&token).unwrap();
@@ -405,6 +416,8 @@ mod tests {
         let unmarshaled_token = FileCredentials::unmarshal(marshaled.into_bytes()).unwrap();
 
         // comparison values
+        assert_eq!(token.client_id, "client_id");
+        assert_eq!(token.client_secret, "client_secret");
         assert_eq!(token.token_response.access_token().secret(),
                    unmarshaled_token.token_response.access_token().secret());
     }

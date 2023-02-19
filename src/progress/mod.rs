@@ -101,7 +101,7 @@ impl<'a> Progress<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::{mem, thread};
+    use std::thread;
     use std::time::Duration;
     use super::*;
 
