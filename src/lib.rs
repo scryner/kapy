@@ -16,9 +16,7 @@ use crate::config::Config;
 use crate::drive::auth::ListenPort;
 
 #[derive(Parser)]
-#[command(name = "kapy")]
-#[command(author = "scryner <scryner@gmail.com>")]
-#[command(about = "A copy utility for large images taken by cameras", long_about = None)]
+#[command(author, version, about = "A copy utility for large images taken by cameras", long_about = None)]
 struct Cli {
     /// Set a custom config file
     #[arg(short, long, value_name = "CONF_PATH", global = true)]

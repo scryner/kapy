@@ -428,27 +428,20 @@ fn determine_resize(img_width: usize, img_height: usize, resize: &Resize) -> Opt
             if *percentage >= 100 {
                 return None;
             }
-            let ratio: f64 = *percentage as f64 / 100.0;
+            let scale_factor: f64 = (*percentage as f64 / 100.0).sqrt();
 
-            let width = (img_width as f64 * ratio) as usize;
-            let height = (img_height as f64 * ratio) as usize;
+            let width = (img_width as f64 * scale_factor).round() as usize;
+            let height = (img_height as f64 * scale_factor).round() as usize;
 
             Some((width, height))
         }
         Resize::MPixels(m_pixels) => {
-            let img_pixels = img_width * img_height;
             let target_pixels = *m_pixels as usize * 1000000;
+            let orig_pixels = img_width * img_height;
+            let scale_factor = (target_pixels as f64 / orig_pixels as f64).sqrt();
 
-            let proportion_to_target = target_pixels as f64 / img_pixels as f64;
-
-            if proportion_to_target > 0.9 {
-                // not needed to resize (differ under 10%)
-                return None;
-            }
-
-            // calculate target width and height
-            let width = (img_width as f64 * proportion_to_target) as usize;
-            let height = (img_height as f64 * proportion_to_target) as usize;
+            let width = (img_width as f64 * scale_factor).round() as usize;
+            let height = (img_height as f64 * scale_factor).round() as usize;
 
             Some((width, height))
         }
