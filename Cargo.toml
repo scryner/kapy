@@ -9,6 +9,10 @@ repository = "https://github.com/scryner/kapy"
 keywords = ["cli", "copy", "photo", "heic", "camera"]
 license = "MIT"
 
+[[bin]]
+name = "kapy"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

@@ -20,11 +20,14 @@ use crate::drive::helper::FileCredentials;
 
 // This is a installed app, client secret for OAuth2 is an extension of client id
 // So, we can embed it
-const CLIENT_ID: &str = "308241855989-j1avgc71ptfakdihs3uj7pbjjric3bpj.apps.googleusercontent.com";
-const CLIENT_SECRET: &str = "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";
+const DEFAULT_CLIENT_ID: &str = "308241855989-j1avgc71ptfakdihs3uj7pbjjric3bpj.apps.googleusercontent.com";
+const DEFAULT_CLIENT_SECRET: &str = "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";
 
 const CLIENT_ID_ENV_KEY: &str = "CLIENT_ID";
 const CLIENT_SECRET_ENV_KEY: &str = "CLIENT_SECRET";
+
+const OVERRIDE_CLIENT_ID: Option<&str> = option_env!("CLIENT_ID");
+const OVERRIDE_CLIENT_SECRET: Option<&str> = option_env!("CLIENT_SECRET");
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
@@ -125,12 +128,12 @@ impl GoogleAuthenticator {
         // try to read client_id and client_secret from environment
         let mut client_id = match env::var(CLIENT_ID_ENV_KEY) {
             Ok(val) => val,
-            _ => String::from(CLIENT_ID),
+            _ => String::from(OVERRIDE_CLIENT_ID.unwrap_or(DEFAULT_CLIENT_ID)),
         };
 
         let mut client_secret = match env::var(CLIENT_SECRET_ENV_KEY) {
             Ok(val) => val,
-            _ => String::from(CLIENT_SECRET),
+            _ => String::from(OVERRIDE_CLIENT_SECRET.unwrap_or(DEFAULT_CLIENT_SECRET)),
         };
 
         // try to read cred from file
