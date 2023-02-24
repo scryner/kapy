@@ -1,5 +1,6 @@
 pub mod image;
 pub mod gps;
+mod exif;
 
 use std::ops::Add;
 use std::path::Path;
@@ -10,6 +11,7 @@ use anyhow::{Result, Error, anyhow};
 use chrono::{DateTime, FixedOffset, Local};
 
 use crate::config::Config;
+use crate::processor::exif::GpsInfo;
 use crate::processor::gps::GpsSearch;
 use crate::processor::image::{HEIC_FORMAT, Inspection, ProcessState, Statistics as ImageStatistics};
 
@@ -147,7 +149,7 @@ pub fn clone_image<'a, F>(conf: &Config,
         let taken_at = inspection.taken_at.to_fixed_offset();
 
         if let Some(waypoint) = gpx.search(&taken_at) {
-            gps_info = Some(image::GpsInfo {
+            gps_info = Some(GpsInfo {
                 lat: waypoint.point().y(),
                 lon: waypoint.point().x(),
                 alt: waypoint.elevation.unwrap_or(0.0),

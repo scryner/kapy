@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_void, c_char};
+use std::ffi::{CStr, CString, c_void};
 use std::fs;
 use std::mem::swap;
 use std::ops::Add;
@@ -12,6 +12,7 @@ use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings, magick_wand_genesis};
 
 use crate::config::{Command, Config, Format, Quality, Resize};
+use crate::processor::exif::{GpsInfo, Metadata};
 
 static START: Once = Once::new();
 
@@ -282,15 +283,26 @@ pub struct Inspection {
 }
 
 pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
-    let tags = vec![
-        String::from(META_DATETIME),
-        String::from(META_RATING),
-        String::from(META_GPS_LAT),
-        String::from(META_GPS_LON),
+    let tag_keys = vec![
+        META_DATETIME,
+        META_RATING,
+        META_GPS_LAT,
+        META_GPS_LON,
     ];
 
-    // get from gexiv2 library
-    let (mime, vals) = tags_from_path(path, tags)?;
+    // get metadata from path
+    let meta = Metadata::new_from_path(Box::new(path.to_path_buf()))?;
+
+    // get mime
+    let mime = meta.get_mime()?;
+
+    // get tags
+    let mut tags = HashMap::new();
+
+    for key in tag_keys.into_iter() {
+        let tag = meta.get_tag(key)?;
+        tags.insert(key.to_string(), tag);
+    }
 
     // get format
     let format = match mime.as_str() {
@@ -300,12 +312,12 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     };
 
     // get gps recorded
-    let lat_recorded = match vals.get(META_GPS_LAT) {
+    let lat_recorded = match tags.get(META_GPS_LAT) {
         Some(s) => s.len() > 0,
         None => false,
     };
 
-    let lon_recorded = match vals.get(META_GPS_LON) {
+    let lon_recorded = match tags.get(META_GPS_LON) {
         Some(s) => s.len() > 0,
         None => false,
     };
@@ -315,7 +327,7 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     // get taken at
     let taken_at;
 
-    match vals.get(META_DATETIME) {
+    match tags.get(META_DATETIME) {
         Some(dt) if dt.len() > 0 => {
             let naive_date = NaiveDateTime::parse_from_str(&dt, "%Y:%m:%d %H:%M:%S")?;
             taken_at = Local.from_local_datetime(&naive_date).unwrap();   // never failed
@@ -329,7 +341,7 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     // get rating
     let mut rating = -1;
 
-    if let Some(rating_str) = vals.get(META_RATING) {
+    if let Some(rating_str) = tags.get(META_RATING) {
         match rating_str.parse::<i8>() {
             Ok(n) => rating = n,
             _ => ()
@@ -455,6 +467,12 @@ fn determine_resize(img_width: usize, img_height: usize, resize: &Resize) -> Opt
     }
 }
 
+fn add_gps_info_to_blob(blob: &Vec<u8>, gps_info: GpsInfo) -> Result<Vec<u8>> {
+    let meta = Metadata::new_from_blob(blob)?;
+    meta.add_gps_info(gps_info)?;
+    meta.paste_to_blob(blob)
+}
+
 #[allow(dead_code)]
 fn image_profile(wand: &MagickWand, name: &str) -> Result<String> {
     let c_name = CString::new(name).unwrap();
@@ -492,100 +510,6 @@ pub fn rating_from_wand(wand: &MagickWand) -> i8 {
     }
 
     return -1;
-}
-
-// native implementation to add gps info
-extern "C" {
-    fn native_add_gps_info_to_blob(blob: *const u8, blob_len: usize, out_blob: *mut *mut u8, lat: f64, lon: f64, alt: f64) -> usize;
-    fn native_get_rating_from_path(path: *const u8) -> i32;
-    fn native_get_tags_from_path(path: *const c_char, tags: *mut *mut c_char, tag_len: usize) -> *mut *mut c_char;
-}
-
-// safe implementation to add gps info
-
-pub struct GpsInfo {
-    pub lat: f64,
-    pub lon: f64,
-    pub alt: f64,
-}
-
-pub fn add_gps_info_to_blob(blob: &Vec<u8>, gps_info: GpsInfo) -> Result<Vec<u8>> {
-    let new_len;
-
-    unsafe {
-        let blob_len = blob.len();
-        let mut out_blob: *mut u8 = std::ptr::null_mut();
-
-        new_len = native_add_gps_info_to_blob(blob.as_ptr(), blob_len, &mut out_blob,
-                                              gps_info.lat, gps_info.lon, gps_info.alt);
-        if new_len > 0 {
-            Ok(Vec::from_raw_parts(out_blob, new_len, new_len))
-        } else {
-            Err(anyhow!("Failed to add gps info"))
-        }
-    }
-}
-
-// safe implementation to get tags
-fn tags_from_path(path: &Path, tags: Vec<String>) -> Result<(String, HashMap<String, String>)> {
-    // prepare to pass tags
-    let tag_len = tags.len();
-    let mut ctags: Vec<CString> = tags.iter().map(|s| CString::new(s.as_str()).unwrap()).collect();
-    let mut ctags: Vec<*mut c_char> = ctags
-        .iter_mut()
-        .map(|vec| vec.as_ptr() as *mut c_char)
-        .collect();
-
-    let mut vals = Vec::new();
-    let mut mime = String::new();
-
-    unsafe {
-        // transform ctags to unsigned char**
-        let ctags_ptr: *mut *mut c_char = ctags.as_mut_ptr();
-
-        // call native code
-        let path_str = CString::new(path.to_str().unwrap()).unwrap();
-        let vals_ptr = native_get_tags_from_path(path_str.as_ptr(), ctags_ptr, tag_len);
-
-        // transform
-        for i in 0..tag_len + 1 {
-            let val_ptr = *vals_ptr.offset(i as isize) as *const c_char;
-            if !val_ptr.is_null() {
-                let val_str = CStr::from_ptr(*vals_ptr.offset(i as isize) as *const c_char);
-                let val = val_str.to_str()?.to_string();
-
-                if i == tag_len {
-                    // at last, we added mime type from native code
-                    mime = val;
-                } else {
-                    vals.push(val);
-                }
-            } else {
-                vals.push(String::new());
-            }
-        }
-    }
-
-    // make hashmap according to tags
-    let mut m = HashMap::new();
-    for (i, tag) in tags.iter().enumerate() {
-        m.insert(tag.clone(), vals.get(i).unwrap().clone());
-    }
-
-    Ok((mime, m))
-}
-
-// safe implementation to get rating info
-#[allow(dead_code)]
-pub fn rating_from_path(path: &Path) -> i8 {
-    let rating;
-    let path_str = path.to_str().unwrap();
-
-    unsafe {
-        rating = native_get_rating_from_path(path_str.as_ptr());
-    }
-
-    rating as i8
 }
 
 #[allow(dead_code)]
