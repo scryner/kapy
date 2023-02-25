@@ -29,23 +29,47 @@ If you are not using Homebrew, please install the required packages below and se
 * Exiv2 library (https://exiv2.org/download.html)
   * EXIV2_INCLUDE_DIRS - list of include directories split by :
   * EXIV2_LIB_DIRS - list of lib directories split by :
-* libssh library  (https://www.libssh.org/get-it/)
+* libssh library (https://www.libssh.org/get-it/)
   * LIBSSH_INCLUDE_DIRS - list of include directories split by :
   * LIBSSH_LIB_DIRS - list of lib directories split by :
 
-### Build on Windows
 
+### Build on Windows
+#### Pre-requirements
 * ImageMagick library (https://imagemagick.org/script/download.php)
-    * IMAGE_MAGICK_DIR - installation directory of ImageMagick
-    * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by ;
-    * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by ;
-    * IMAGE_MAGICK_LIBS - list of the libs to link to
+  * Provides pre-built binary installers.
+  * When installing, the checkbox for installing C/C++ header files should be selected.
+  * You need to set the following Windows environment variable:
+    * IMAGE_MAGICK_DIR={YOUR_MAGICK_INSTALLATION_DIR}
 * Exiv2 library (https://exiv2.org/download.html)
-    * EXIV2_INCLUDE_DIRS - list of include directories split by ;
-    * EXIV2_LIB_DIRS - list of lib directories split by ;
-* libssh library  (https://www.libssh.org/get-it/)
-    * LIBSSH_INCLUDE_DIRS - list of include directories split by ;
-    * LIBSSH_LIB_DIRS - list of lib directories split by ;
+  * Provides pre-built binaries as .zip compressed files.
+  * You need to set the following Windows environment variables:
+    * EXIV2_INCLUDE_DIRS={YOUR_EXIV2_INCLUDE_DIR}
+    * EXIV2_LIB_DIRS={YOUR_EXIV_LIB_DIR}
+* libssh library (https://www.libssh.org/get-it/)
+  * Provided as a package in `vcpkg` the Microsoft's package manager.
+  * vcpkg (https://vcpkg.io/en/getting-started.html) should be installed first.
+  * After installation, install the library: `vcpkg install libssh`
+  * You need to set the following Windows environment variables: 
+    * LIBSSH_INCLUDE_DIRS={YOUR_LIBSSH_INCLUDE_DIR}
+    * LIBSSH_LIB_DIRS={YOUR_LIBSSH_LIB_DIR}
+* clang library (https://releases.llvm.org/download.html)
+  * Provides pre-built binary installers.
+  * You need to set the following Windows environment variable:
+    * LIBCLANG_PATH={YOUR_LLVM_BIN_DIR}
+
+### Build
+```shell
+> set CLIENT_ID={YOUR_CLIENT_ID}
+> set CLIENT_SECRET={YOUR_SECRET}
+> set IMAGE_MAGICK_DIR={YOUR_MAGICK_INSTALLATION_DIR} 
+> set EXIV2_INCLUDE_DIRS={YOUR_EXIV2_INCLUDE_DIR} 
+> set EXIV2_LIB_DIRS={YOUR_EXIV_LIB_DIR}
+> set LIBSSH_INCLUDE_DIRS={YOUR_LIBSSH_INCLUDE_DIR}
+> set LIBSSH_LIB_DIRS={YOUR_LIBSSH_LIB_DIR}
+> set LIBCLANG_PATH={YOUR_LLVM_BIN_DIR} 
+> cargo build
+```
 
 ## Usage
 ```shell
