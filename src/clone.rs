@@ -176,7 +176,6 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
 
     // process clone
     let mut clone_statistics = CloneStatistics::new();
-    let total_images = import_entries.len();
     let mut errors = Vec::new();
 
     // make progress
@@ -224,7 +223,7 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
     }
 
     // print-out clone statistics
-    clone_statistics.print_with_error(total_images, &errors);
+    clone_statistics.print_with_error(&errors);
 }
 
 fn import_entries(dir: &Path) -> Vec<DirEntry> {

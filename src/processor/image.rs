@@ -300,8 +300,10 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     let mut tags = HashMap::new();
 
     for key in tag_keys.into_iter() {
-        let tag = meta.get_tag(key)?;
-        tags.insert(key.to_string(), tag);
+        match meta.get_tag(key) {
+            Some(tag) => { tags.insert(key.to_string(), tag); }
+            None => ()
+        }
     }
 
     // get format

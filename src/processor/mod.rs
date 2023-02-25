@@ -39,12 +39,12 @@ impl CloneStatistics {
       -  90 converted to HEIC
       -   0 converted to JPEG
      */
-    pub fn print_with_error(&self, total_images: usize, errors: &Vec<(&Inspection, Error)>) {
+    pub fn print_with_error(&self, errors: &Vec<(&Inspection, Error)>) {
         let error_len = errors.len();
         let width = max_width(vec![self.total_cloned, error_len]);
         print!("{:>5} total images", style(self.total_cloned).cyan().bold());
         println!(" ({} succeed / {} failed)",
-                 style(total_images - error_len).green(),
+                 style(self.total_cloned - error_len).green(),
                  if error_len > 0 { style(error_len).red() } else { style(error_len).dim() });
 
         println!("{}", style("---").dim());

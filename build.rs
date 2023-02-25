@@ -15,7 +15,7 @@ fn main() {
         },
         FromEnv {
             env_key_include_dirs: "EXIV2_INCLUDE_DIRS".to_string(),
-            env_key_lib_dirs: "EXIV2_LIBS".to_string(),
+            env_key_lib_dirs: "EXIV2_LIB_DIRS".to_string(),
             libs: vec!["exiv2".to_string()],
         }
     ).unwrap();
@@ -27,7 +27,7 @@ fn main() {
         },
         FromEnv{
             env_key_include_dirs: "LIBSSH_INCLUDE_DIRS".to_string(),
-            env_key_lib_dirs: "LIBSSH_LIBS".to_string(),
+            env_key_lib_dirs: "LIBSSH_LIB_DIRS".to_string(),
             libs: vec!["ssh".to_string()],
         }
     ).unwrap();

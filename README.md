@@ -8,6 +8,45 @@ This tool streamlines the process of transferring photos from your camera to you
 - Merge GPS information into EXIF from .gpx files on Google Drive
 - Adjust image size and compression ratio based on EXIF rate information
 
+## Build
+### Build on macOS
+
+If you use Homebrew (https://brew.sh/), you can easily install the required packages. <br/>
+After installing Homebrew, you can install the required packages and build the application by running the following command:
+
+```shell
+$ brew install pkg-config imagemagick exiv2 libssh
+$ CLIENT_ID={YOUR_CLIENT_ID} CLIENT_SECRET={YOUR_SECRET} cargo build
+```
+
+If you are not using Homebrew, please install the required packages below and set the corresponding environment variables accordingly:
+
+* ImageMagick library (https://imagemagick.org/script/download.php)
+  * IMAGE_MAGICK_DIR - installation directory of ImageMagick
+  * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by ;
+  * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by ;
+  * IMAGE_MAGICK_LIBS - list of the libs to link to
+* Exiv2 library (https://exiv2.org/download.html)
+  * EXIV2_INCLUDE_DIRS - list of include directories split by ;
+  * EXIV2_LIB_DIRS - list of lib directories split by ;
+* libssh library  (https://www.libssh.org/get-it/)
+  * LIBSSH_INCLUDE_DIRS - list of include directories split by ;
+  * LIBSSH_LIB_DIRS - list of lib directories split by ;
+
+### Build on Windows
+
+* ImageMagick library (https://imagemagick.org/script/download.php)
+    * IMAGE_MAGICK_DIR - installation directory of ImageMagick
+    * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by :
+    * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by :
+    * IMAGE_MAGICK_LIBS - list of the libs to link to
+* Exiv2 library (https://exiv2.org/download.html)
+    * EXIV2_INCLUDE_DIRS - list of include directories split by :
+    * EXIV2_LIB_DIRS - list of lib directories split by :
+* libssh library  (https://www.libssh.org/get-it/)
+    * LIBSSH_INCLUDE_DIRS - list of include directories split by :
+    * LIBSSH_LIB_DIRS - list of lib directories split by :
+
 ## Usage
 ```shell
 $ kapy clone -c ~/.kapy.yaml --from /Volumes/Untitled/DCIM/108HASBL --to ~/images

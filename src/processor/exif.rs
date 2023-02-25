@@ -86,10 +86,9 @@ impl Metadata {
 
             Ok(val)
         }
-
     }
 
-    pub fn get_tag<T>(&self, tag: T) -> Result<String>
+    pub fn get_tag<T>(&self, tag: T) -> Option<String>
         where T: AsRef<str> {
         let tag = CString::new(tag.as_ref()).unwrap();
         let tag = tag.as_ptr();
@@ -97,13 +96,13 @@ impl Metadata {
         unsafe {
             let val = exif_get_tag_string(self.raw, tag);
             if val.is_null() {
-                return Err(anyhow!("Failed to get tag string"));
+                return None;
             }
 
             let val = CStr::from_ptr(val as *const c_char);
-            let val = val.to_str()?.to_string();
+            let val = val.to_str().unwrap().to_string();
 
-            Ok(val)
+            Some(val)
         }
     }
 
