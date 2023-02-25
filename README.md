@@ -23,29 +23,29 @@ If you are not using Homebrew, please install the required packages below and se
 
 * ImageMagick library (https://imagemagick.org/script/download.php)
   * IMAGE_MAGICK_DIR - installation directory of ImageMagick
-  * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by ;
-  * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by ;
+  * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by :
+  * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by :
   * IMAGE_MAGICK_LIBS - list of the libs to link to
 * Exiv2 library (https://exiv2.org/download.html)
-  * EXIV2_INCLUDE_DIRS - list of include directories split by ;
-  * EXIV2_LIB_DIRS - list of lib directories split by ;
+  * EXIV2_INCLUDE_DIRS - list of include directories split by :
+  * EXIV2_LIB_DIRS - list of lib directories split by :
 * libssh library  (https://www.libssh.org/get-it/)
-  * LIBSSH_INCLUDE_DIRS - list of include directories split by ;
-  * LIBSSH_LIB_DIRS - list of lib directories split by ;
+  * LIBSSH_INCLUDE_DIRS - list of include directories split by :
+  * LIBSSH_LIB_DIRS - list of lib directories split by :
 
 ### Build on Windows
 
 * ImageMagick library (https://imagemagick.org/script/download.php)
     * IMAGE_MAGICK_DIR - installation directory of ImageMagick
-    * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by :
-    * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by :
+    * IMAGE_MAGICK_LIB_DIRS - list of lib directories split by ;
+    * IMAGE_MAGICK_INCLUDE_DIRS - list of include directories split by ;
     * IMAGE_MAGICK_LIBS - list of the libs to link to
 * Exiv2 library (https://exiv2.org/download.html)
-    * EXIV2_INCLUDE_DIRS - list of include directories split by :
-    * EXIV2_LIB_DIRS - list of lib directories split by :
+    * EXIV2_INCLUDE_DIRS - list of include directories split by ;
+    * EXIV2_LIB_DIRS - list of lib directories split by ;
 * libssh library  (https://www.libssh.org/get-it/)
-    * LIBSSH_INCLUDE_DIRS - list of include directories split by :
-    * LIBSSH_LIB_DIRS - list of lib directories split by :
+    * LIBSSH_INCLUDE_DIRS - list of include directories split by ;
+    * LIBSSH_LIB_DIRS - list of lib directories split by ;
 
 ## Usage
 ```shell
