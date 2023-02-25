@@ -31,7 +31,7 @@ exif_metadata_t* exif_metadata_new() {
     memset(self, 0, sizeof(exif_metadata_t));
 
     exif_metadata_private_t *priv = (exif_metadata_private_t*) malloc(sizeof(exif_metadata_private_t));
-    memset(self, 0, sizeof(exif_metadata_private_t));
+    memset(priv, 0, sizeof(exif_metadata_private_t));
 
     self->priv = priv;
     return self;
