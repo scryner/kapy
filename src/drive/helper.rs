@@ -1,11 +1,13 @@
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use base64::{{Engine as _, engine::general_purpose}};
 use anyhow::Result;
 use crate::drive::auth::Token;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 pub struct FileCredentials;
 
