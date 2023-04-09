@@ -1,6 +1,7 @@
 pub mod image;
 pub mod gps;
 mod exif;
+mod avif;
 
 use std::ops::Add;
 use std::path::Path;
@@ -59,12 +60,14 @@ impl CloneStatistics {
             let inner_width = max_width(vec![converted_stat.resized,
                                              converted_stat.adjust_quality,
                                              converted_stat.converted_to_heic,
+                                             converted_stat.converted_to_avif,
                                              converted_stat.converted_to_jpeg]);
 
             println!("{:>width$} {:>inner_width$} gps added", style("-").yellow(), converted_stat.gps_added);
             println!("{:>width$} {:>inner_width$} resized", style("-").yellow(), converted_stat.resized);
             println!("{:>width$} {:>inner_width$} adjusted quality", style("-").yellow(), converted_stat.adjust_quality);
             println!("{:>width$} {:>inner_width$} converted to HEIC", style("-").yellow(), converted_stat.converted_to_heic);
+            println!("{:>width$} {:>inner_width$} converted to AVIF", style("-").yellow(), converted_stat.converted_to_avif);
             println!("{:>width$} {:>inner_width$} converted to JPEG", style("-").yellow(), converted_stat.converted_to_jpeg);
         }
 

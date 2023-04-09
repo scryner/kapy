@@ -306,7 +306,7 @@ fn walk_and_filter_only_supported_images(dir: &Path) -> Vec<DirEntry> {
 
             if let Some(ext) = path.extension()?.to_str() {
                 return match ext.to_lowercase().as_str() {
-                    "jpeg" | "jpg" | "heic" => Some(entry),
+                    "jpeg" | "jpg" | "heic" | "avif" => Some(entry),
                     _ => None,
                 };
             }

@@ -12,11 +12,12 @@ use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings, magick_wand_genesis};
 
 use crate::config::{Command, Config, Format, Quality, Resize};
+use crate::processor::avif;
 use crate::processor::exif::{GpsInfo, Metadata};
 
 static START: Once = Once::new();
 
-fn prelude() {
+pub(crate) fn prelude() {
     START.call_once(|| {
         magick_wand_genesis();
     });
@@ -40,6 +41,7 @@ impl Statistics {
                 adjust_quality: 0,
                 converted_to_jpeg: 0,
                 converted_to_heic: 0,
+                converted_to_avif: 0,
                 gps_added: 0,
             },
         }
@@ -64,6 +66,7 @@ pub struct ConvertedStatistics {
     pub adjust_quality: usize,
     pub converted_to_jpeg: usize,
     pub converted_to_heic: usize,
+    pub converted_to_avif: usize,
     pub gps_added: usize,
 }
 
@@ -76,6 +79,7 @@ impl Add for ConvertedStatistics {
             adjust_quality: self.adjust_quality + rhs.adjust_quality,
             converted_to_jpeg: self.converted_to_jpeg + rhs.converted_to_jpeg,
             converted_to_heic: self.converted_to_heic + rhs.converted_to_heic,
+            converted_to_avif: self.converted_to_avif + rhs.converted_to_avif,
             gps_added: self.gps_added + rhs.gps_added,
         }
     }
@@ -125,7 +129,7 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
 
             let mut wand = MagickWand::new();
 
-            if let Some(gps_info) = rewrite_info.gps_info {
+            if let Some(ref gps_info) = rewrite_info.gps_info {
                 // read image fom file to blob
                 when_update(ProcessState::Reading(String::from(in_path_str)));
                 let mut blob = read_image_to_blob(in_file)?;
@@ -184,7 +188,7 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                     }
                 }
 
-                wand.write_image(&out_path_string)?;
+                rewrite_image(&mut wand, &rewrite_info, &out_path_string)?;
                 statistics.converted += 1;
 
                 match rewrite_info.target_format {
@@ -192,6 +196,7 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                         match format.as_str() {
                             JPEG_FORMAT => statistics.converted_statistics.converted_to_jpeg += 1,
                             HEIC_FORMAT => statistics.converted_statistics.converted_to_heic += 1,
+                            AVIF_FORMAT => statistics.converted_statistics.converted_to_avif += 1,
                             _ => ()
                         }
                     }
@@ -225,6 +230,47 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
     }
 
     Ok(statistics)
+}
+
+
+pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &ConvertInfo, out_path: T) -> Result<()> {
+    let target_format = match rewrite_info.target_format {
+        Some(ref format) => {
+            Format::from_str(format.as_str())?
+        }
+        None => Format::Preserve,
+    };
+
+    match target_format {
+        Format::AVIF => {
+            // rewrite as avif, we will rewrite using ravif crate instead of imagemagick.
+            // because imagemagick can't convert big size image at this time (v7.1.x)
+
+            // write to blob
+            let blob = wand.write_image_blob("JPEG")?;
+
+            // determine target quality
+            let quality = match rewrite_info.quality {
+                Some(quality) => quality as f32,
+                None => 95.
+            };
+
+            // encoding to avif
+            let encoded = avif::encode(blob, quality)?;
+
+            // write the file
+            let out_path = PathBuf::from(out_path.as_ref());
+            fs::write(out_path, encoded.avif_file)?;
+        }
+        Format::HEIC => {
+            // we do auto orient for HEIC image format
+            wand.auto_orient();
+        }
+        _ => (),
+    }
+
+    wand.write_image(out_path.as_ref())?;
+    Ok(())
 }
 
 fn out_path(in_file: &Path, out_dir: &Path, format: Option<String>) -> Result<String> {
@@ -268,6 +314,7 @@ fn out_path(in_file: &Path, out_dir: &Path, format: Option<String>) -> Result<St
 
 pub const JPEG_FORMAT: &str = "jpeg";
 pub const HEIC_FORMAT: &str = "heic";
+pub const AVIF_FORMAT: &str = "avif";
 
 const META_DATETIME: &str = "Exif.Image.DateTime";
 const META_RATING: &str = "Xmp.xmp.Rating";
@@ -309,6 +356,7 @@ pub fn inspect_image_from_path(path: &Path) -> Result<Inspection> {
     // get format
     let format = match mime.as_str() {
         "image/jpeg" => JPEG_FORMAT,
+        "image/avif" => AVIF_FORMAT,
         "video/quicktime" => HEIC_FORMAT,
         _ => return Err(anyhow!("Unsupported mime: {}", mime))
     };
@@ -425,6 +473,7 @@ fn save_option_by_command(cmd: &Command, inspection: &Inspection, gps_info: Opti
     let convert = match format {
         Format::JPEG if inspection.format.as_str() != JPEG_FORMAT => Some(JPEG_FORMAT.to_string()),
         Format::HEIC if inspection.format.as_str() != HEIC_FORMAT => Some(HEIC_FORMAT.to_string()),
+        Format::AVIF if inspection.format.as_str() != AVIF_FORMAT => Some(AVIF_FORMAT.to_string()),
         _ => None
     };
 
@@ -469,7 +518,7 @@ fn determine_resize(img_width: usize, img_height: usize, resize: &Resize) -> Opt
     }
 }
 
-fn add_gps_info_to_blob(blob: &Vec<u8>, gps_info: GpsInfo) -> Result<Vec<u8>> {
+fn add_gps_info_to_blob(blob: &Vec<u8>, gps_info: &GpsInfo) -> Result<Vec<u8>> {
     let meta = Metadata::new_from_blob(blob)?;
     meta.add_gps_info(gps_info)?;
     meta.paste_to_blob(blob)

@@ -1,12 +1,12 @@
 [package]
 name = "kapy"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 authors = ["Seonghwan Jeong <scryner@gmail.com>"]
 build = "build.rs"
 description = "Cli tool to copy photos with optimizations"
 repository = "https://github.com/scryner/kapy"
-keywords = ["cli", "copy", "photo", "heic", "camera"]
+keywords = ["cli", "copy", "photo", "heic", "avif", "camera"]
 license = "MIT"
 
 [[bin]]
@@ -35,6 +35,11 @@ base64 = "0.21.0"
 gpx = "0.8.6"
 chrono = "0.4.23"
 walkdir = "2.3.2"
+ravif = "0.11.1"
+load_image = "3.0.3"
+imgref = "1.9.4"
+cocoa_image = { version="1.0.5", optional = true }
+rayon = "1.7.0"
 
 [build-dependencies]
 cc = "1.0.79"

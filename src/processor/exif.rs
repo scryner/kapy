@@ -106,7 +106,7 @@ impl Metadata {
         }
     }
 
-    pub fn add_gps_info(&self, gps_info: GpsInfo) -> Result<()> {
+    pub fn add_gps_info(&self, gps_info: &GpsInfo) -> Result<()> {
         unsafe {
             let rc = exif_metadata_add_gps_info(self.raw, gps_info.lat, gps_info.lon, gps_info.lon);
 

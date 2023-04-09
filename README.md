@@ -4,7 +4,7 @@ kapy
 Kapy is a simple utility designed to copy digital camera photos from an SD card to a disk with transformations.
 This tool streamlines the process of transferring photos from your camera to your computer, while also providing the ability to make any necessary image transformations during the copying process.
 
-- Convert from JPEG to HEIC
+- Convert from JPEG to HEIC/AVIF to reduce image size
 - Merge GPS information into EXIF from .gpx files on Google Drive
 - Adjust image size and compression ratio based on EXIF rate information
 
@@ -57,6 +57,9 @@ If you are not using Homebrew, please install the required packages below and se
   * Provides pre-built binary installers.
   * You need to set the following Windows environment variable:
     * LIBCLANG_PATH={YOUR_LLVM_BIN_DIR}
+* NASM executable (https://www.nasm.us/)
+  * Provides pre-built binary installer and only executables
+  * You need to add the directory where executables were installed to your PATH. 
 
 ### Build
 ```shell

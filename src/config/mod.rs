@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use anyhow::{anyhow, Result};
 
 use regex::Regex;
 use serde::Deserialize;
@@ -79,6 +80,9 @@ impl Policy {
                 }
                 "jpg" | "jpeg" => {
                     format = Some(Format::JPEG);
+                }
+                "avif" => {
+                    format = Some(Format::AVIF);
                 }
                 "preserve" => {
                     format = Some(Format::Preserve);
@@ -165,6 +169,7 @@ impl ToString for Resize {
 pub enum Format {
     JPEG,
     HEIC,
+    AVIF,
     Preserve,
 }
 
@@ -173,7 +178,20 @@ impl Format {
         match self {
             Format::JPEG => "JPEG",
             Format::HEIC => "HEIC",
+            Format::AVIF => "AVIF",
             Format::Preserve => "",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self> {
+        let upper_s = String::from(s).to_uppercase();
+
+        match upper_s.as_str() {
+            "JPEG" => Ok(Format::JPEG),
+            "HEIC" => Ok(Format::HEIC),
+            "AVIF" => Ok(Format::AVIF),
+            "PRESERVE" => Ok(Format::Preserve),
+            _ => Err(anyhow!("invalid format '{}", s))
         }
     }
 }
@@ -183,7 +201,6 @@ impl ToString for Format {
         self.as_str().to_string()
     }
 }
-
 
 #[derive(Debug, PartialEq)]
 pub enum Quality {
