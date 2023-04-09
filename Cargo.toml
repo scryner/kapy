@@ -45,3 +45,4 @@ libheif-rs = "0.19.2"
 [build-dependencies]
 cc = "1.0.79"
 pkg-config = "0.3.26"
+vcpkg = "0.2.15"

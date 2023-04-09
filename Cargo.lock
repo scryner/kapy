@@ -1229,6 +1229,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "url",
+ "vcpkg",
  "walkdir",
 ]
 

@@ -78,6 +78,11 @@ fn find_library(from_pkg_config: FromPkgConfig, from_env: FromEnv) -> Result<Vec
     }
 
     // try to find from pkg_config
+    find_library_internal(&from_pkg_config)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_library_internal(from_pkg_config: &FromPkgConfig) -> Result<Vec<PathBuf>, String> {
     match pkg_config::Config::new()
         .atleast_version(from_pkg_config.atleast_version.as_str())
         .probe(from_pkg_config.name.as_str()) {
@@ -86,6 +91,14 @@ fn find_library(from_pkg_config: FromPkgConfig, from_env: FromEnv) -> Result<Vec
             Err(format!("Failed to find library from pkg_config: {}", e))
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn find_library_internal(from_pkg_config: &FromPkgConfig) -> Result<Vec<PathBuf>, String> {
+    let library = vcpkg::find_package(from_pkg_config.name.as_str())
+        .map_err(|e| Err(String::from(format!("can't find library '{}' using vcpkg", from_pkg_config.name.as_str()))))?;
+
+    Ok(library.include_paths)
 }
 
 fn find_library_from_env(from_env: &FromEnv) -> Result<Vec<PathBuf>, String> {
