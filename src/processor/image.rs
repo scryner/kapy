@@ -163,14 +163,6 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                 statistics.converted_statistics.resized += 1;
             }
 
-            // quality
-            if let Some(percentage) = rewrite_info.quality {
-                wand.set_image_compression_quality(percentage as usize)?;
-                statistics.converted_statistics.adjust_quality += 1;
-            } else if let Some(ref _target_format) = rewrite_info.target_format {
-                wand.set_image_compression_quality(95)?; // set compression quality to 95, because default value is 92
-            }
-
             // rewrite
             if dry_run {
                 statistics.skipped += 1;
@@ -188,7 +180,15 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                     }
                 }
 
-                rewrite_image(&mut wand, &rewrite_info, &out_path_string)?;
+                // determine quality
+                let quality = if let Some(percentage) = rewrite_info.quality {
+                    statistics.converted_statistics.adjust_quality += 1;
+                    percentage
+                } else if let Some(ref _target_format) = rewrite_info.target_format {
+                    95_u8
+                };
+
+                rewrite_image(&mut wand, &rewrite_info, quality, &out_path_string)?;
                 statistics.converted += 1;
 
                 match rewrite_info.target_format {
@@ -233,7 +233,7 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
 }
 
 
-pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &ConvertInfo, out_path: T) -> Result<()> {
+pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &ConvertInfo, quality: u8, out_path: T) -> Result<()> {
     let target_format = match rewrite_info.target_format {
         Some(ref format) => {
             Format::from_str(format.as_str())?
@@ -249,14 +249,8 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             // write to blob
             let blob = wand.write_image_blob("JPEG")?;
 
-            // determine target quality
-            let quality = match rewrite_info.quality {
-                Some(quality) => quality as f32,
-                None => 95.
-            };
-
             // encoding to avif
-            let encoded = avif::encode(blob, quality)?;
+            let encoded = avif::encode(blob, quality as f32)?;
 
             // write the file
             let out_path = PathBuf::from(out_path.as_ref());
@@ -269,12 +263,6 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             // we do auto orient for HEIC image format
             wand.auto_orient();
 
-            // determine target quality
-            let quality = match rewrite_info.quality {
-                Some(quality) => quality,
-                None => 95,
-            };
-
             let encoded = heif::encode(wand, quality)?;
 
             // write the file
@@ -284,11 +272,15 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             // just return; we already wrote image content
             return Ok(())
         }
-        _ => (),
-    }
+        _ => {
+            // set image quality
+            wand.set_image_compression_quality(quality as usize)?;
 
-    wand.write_image(out_path.as_ref())?;
-    Ok(())
+            // write image
+            wand.write_image(out_path.as_ref())?;
+            Ok(())
+        },
+    }
 }
 
 fn out_path(in_file: &Path, out_dir: &Path, format: Option<String>) -> Result<String> {
