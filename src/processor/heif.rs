@@ -45,7 +45,7 @@ pub fn encode(wand: &mut MagickWand, quality: u8) -> Result<Vec<u8>> {
     let lib_heif = LibHeif::new();
     let mut context = HeifContext::new()?;
     let mut encoder = lib_heif.encoder_for_format(CompressionFormat::Hevc)?;
-    encoder.set_quality(EncoderQuality::Lossy(quality))?;
+    encoder.set_quality(EncoderQuality::Lossy(interpolate_quality(quality)))?;
     let handle = context.encode_image(&image, &mut encoder, None)?;
 
     // add metadata
@@ -59,6 +59,59 @@ pub fn encode(wand: &mut MagickWand, quality: u8) -> Result<Vec<u8>> {
 
     context.write_to_bytes()
         .map_err(|e| anyhow!("Failed to write to bytes: {}", e))
+}
+
+fn interpolate_quality(quality: u8) -> u8 {
+    let biases = vec![
+        (70, 50.),
+        (85, 60.),
+        (92, 70.),
+        (95, 80.),
+        (100, 100.),
+    ];
+
+    let tolerance = 0.1;
+
+    let mut lower: Option<(i32, f32)> = None;
+    let mut upper: Option<(i32, f32)> = None;
+
+    for (i, &(q, biased)) in biases.iter().enumerate() {
+        if q == quality {
+            return biased as u8;
+        } else if q < quality {
+            lower = Some((i as i32, biased));
+        } else if q > quality {
+            upper = Some((i as i32, biased));
+            break;
+        }
+    }
+
+    match (lower, upper) {
+        (Some((lower_idx, lower_size)), Some((upper_idx, upper_size))) => {
+            let lower_quality = biases[lower_idx as usize].0 as f32;
+            let upper_quality = biases[upper_idx as usize].0 as f32;
+            let quality_ratio = (quality as f32 - lower_quality) / (upper_quality - lower_quality);
+            let interpolated_size = lower_size + quality_ratio * (upper_size - lower_size);
+
+            if (interpolated_size - lower_size).abs() < tolerance {
+                return lower_size as u8;
+            } else if (interpolated_size - upper_size).abs() < tolerance {
+                return upper_size as u8;
+            } else {
+                return interpolated_size as u8;
+            }
+        }
+        (Some((_lower_idx, lower_size)), None) => {
+            return lower_size as u8;
+        }
+        (None, Some((_upper_idx, upper_size))) => {
+            return upper_size as u8;
+        }
+        _ => {
+            // never reached
+            panic!("Unable to interpolate file size")
+        },
+    }
 }
 
 fn get_image_profile<T: AsRef<str>>(wand: &mut MagickWand, name: T) -> Option<Vec<u8>> {

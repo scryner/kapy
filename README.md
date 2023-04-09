@@ -49,7 +49,7 @@ If you are not using Homebrew, please install the required packages below and se
 * libssh library (https://www.libssh.org/get-it/)
   * Provided as a package in `vcpkg` the Microsoft's package manager.
   * vcpkg (https://vcpkg.io/en/getting-started.html) should be installed first.
-  * After installation, install the library: `vcpkg install libssh`
+  * After installation, install the library: `vcpkg install --triplet=x64-windows libssh`
   * You need to set the following Windows environment variables: 
     * LIBSSH_INCLUDE_DIRS={YOUR_LIBSSH_INCLUDE_DIR}
     * LIBSSH_LIB_DIRS={YOUR_LIBSSH_LIB_DIR}
@@ -60,6 +60,13 @@ If you are not using Homebrew, please install the required packages below and se
 * NASM executable (https://www.nasm.us/)
   * Provides pre-built binary installer and only executables
   * You need to add the directory where executables were installed to your PATH. 
+* libheif library (https://github.com/strukturag/libheif)
+  * Provided as a package in `vcpkg` the Microsoft's package manager.
+  * vcpkg (https://vcpkg.io/en/getting-started.html) should be installed first.
+  * After installation, install the library: `vcpkg install --triplet=x64-windows-static-md`
+  * You need to set `vcpkg` related environment variables:
+    * VCPKG_ROOT={YOUR_VCPKG_ROOT_DIR}
+    * You need to append VCPKG_ROOT directory to your PATH environment. 
 
 ### Build
 ```shell
