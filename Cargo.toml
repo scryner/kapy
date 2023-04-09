@@ -40,6 +40,7 @@ load_image = "3.0.3"
 imgref = "1.9.4"
 cocoa_image = { version="1.0.5", optional = true }
 rayon = "1.7.0"
+libheif-rs = "0.19.2"
 
 [build-dependencies]
 cc = "1.0.79"

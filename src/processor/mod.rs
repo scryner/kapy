@@ -2,6 +2,7 @@ pub mod image;
 pub mod gps;
 mod exif;
 mod avif;
+mod heif;
 
 use std::ops::Add;
 use std::path::Path;

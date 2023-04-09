@@ -12,7 +12,7 @@ use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
 use magick_rust::{MagickWand, bindings, magick_wand_genesis};
 
 use crate::config::{Command, Config, Format, Quality, Resize};
-use crate::processor::avif;
+use crate::processor::{avif, heif};
 use crate::processor::exif::{GpsInfo, Metadata};
 
 static START: Once = Once::new();
@@ -268,6 +268,21 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
         Format::HEIC => {
             // we do auto orient for HEIC image format
             wand.auto_orient();
+
+            // determine target quality
+            let quality = match rewrite_info.quality {
+                Some(quality) => quality,
+                None => 95,
+            };
+
+            let encoded = heif::encode(wand, quality)?;
+
+            // write the file
+            let out_path = PathBuf::from(out_path.as_ref());
+            fs::write(out_path, encoded)?;
+
+            // just return; we already wrote image content
+            return Ok(())
         }
         _ => (),
     }
