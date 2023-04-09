@@ -6,7 +6,7 @@ authors = ["Seonghwan Jeong <scryner@gmail.com>"]
 build = "build.rs"
 description = "Cli tool to copy photos with optimizations"
 repository = "https://github.com/scryner/kapy"
-keywords = ["cli", "copy", "photo", "heic", "avif", "camera"]
+keywords = ["cli", "copy", "photo", "avif", "camera"]
 license = "MIT"
 
 [[bin]]
