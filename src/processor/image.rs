@@ -257,7 +257,7 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             fs::write(out_path, encoded.avif_file)?;
 
             // just return; we already wrote image content
-            return Ok(())
+            Ok(())
         }
         Format::HEIC => {
             // we do auto orient for HEIC image format
@@ -270,7 +270,7 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             fs::write(out_path, encoded)?;
 
             // just return; we already wrote image content
-            return Ok(())
+            Ok(())
         }
         _ => {
             // set image quality
