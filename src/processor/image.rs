@@ -261,6 +261,9 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             // write the file
             let out_path = PathBuf::from(out_path.as_ref());
             fs::write(out_path, encoded.avif_file)?;
+
+            // just return; we already wrote image content
+            return Ok(())
         }
         Format::HEIC => {
             // we do auto orient for HEIC image format
