@@ -49,6 +49,7 @@ fn main() {
     // compile c files
     cc::Build::new()
         .cpp(true)
+        .flag("-std=c++17")
         .file("lib/exif.cpp")
         .include("lib")
         .includes(exiv2_inc_dirs)

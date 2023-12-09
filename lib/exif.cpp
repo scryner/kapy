@@ -18,7 +18,7 @@
 
 // private struct for exif_metadata_t
 struct _exif_metadata_private_t {
-    Exiv2::Image::AutoPtr image;
+    Exiv2::Image::UniquePtr image;
 };
 
 // internal functions
@@ -146,10 +146,10 @@ size_t exif_metadata_save_blob(exif_metadata_t *self, unsigned char* blob, size_
     try {
         // create MemIO class from blob
         Exiv2::MemIo *mem = new Exiv2::MemIo(blob, blob_len);
-        Exiv2::BasicIo::AutoPtr memBlock(mem);
+        Exiv2::BasicIo::UniquePtr memBlock(std::move(mem));
 
         // make image from blob and read its metadata
-        Exiv2::Image::AutoPtr image = Exiv2::ImageFactory::open(memBlock);
+        Exiv2::Image::UniquePtr image = Exiv2::ImageFactory::open(std::move(memBlock));
         image->readMetadata();
 
         // write metadata from self

@@ -416,12 +416,12 @@ mod tests {
         println!("marshaled = {}", marshaled);
 
         // unmarshal token
-        let unmarshaled_token = FileCredentials::unmarshal(marshaled.into_bytes()).unwrap();
+        let unmarshalled_token = FileCredentials::unmarshal(marshaled.into_bytes()).unwrap();
 
         // comparison values
         assert_eq!(token.client_id, "client_id");
         assert_eq!(token.client_secret, "client_secret");
         assert_eq!(token.token_response.access_token().secret(),
-                   unmarshaled_token.token_response.access_token().secret());
+                   unmarshalled_token.token_response.access_token().secret());
     }
 }

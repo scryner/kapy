@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{c_void, CStr, CString};
 use std::fs;
 use std::mem::swap;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 
-use regex::Regex;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::{Datelike, DateTime, Local, NaiveDateTime, TimeZone};
-use magick_rust::{MagickWand, bindings, magick_wand_genesis};
+use magick_rust::{bindings, magick_wand_genesis, MagickWand};
+use regex::Regex;
 
 use crate::config::{Command, Config, Format, Quality, Resize};
 use crate::processor::{avif, heif};
@@ -183,9 +183,11 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
                 // determine quality
                 let quality = if let Some(percentage) = rewrite_info.quality {
                     statistics.converted_statistics.adjust_quality += 1;
-                    percentage
+                    Some(percentage)
                 } else if let Some(ref _target_format) = rewrite_info.target_format {
-                    95_u8
+                    Some(95_u8)
+                } else {
+                    None
                 };
 
                 rewrite_image(&mut wand, &rewrite_info, quality, &out_path_string)?;
@@ -233,7 +235,7 @@ pub fn process<F>(conf: &Config, in_file: &Path, out_dir: &Path,
 }
 
 
-pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &ConvertInfo, quality: u8, out_path: T) -> Result<()> {
+pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &ConvertInfo, quality: Option<u8>, out_path: T) -> Result<()> {
     let target_format = match rewrite_info.target_format {
         Some(ref format) => {
             Format::from_str(format.as_str())?
@@ -250,7 +252,8 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             let blob = wand.write_image_blob("JPEG")?;
 
             // encoding to avif
-            let encoded = avif::encode(blob, quality as f32)?;
+            let encoded = avif::encode(blob,
+                                       quality.unwrap_or(95) as f32)?;
 
             // write the file
             let out_path = PathBuf::from(out_path.as_ref());
@@ -263,7 +266,8 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
             // we do auto orient for HEIC image format
             wand.auto_orient();
 
-            let encoded = heif::encode(wand, quality)?;
+            let encoded = heif::encode(wand,
+                                       quality.unwrap_or(95))?;
 
             // write the file
             let out_path = PathBuf::from(out_path.as_ref());
@@ -274,12 +278,14 @@ pub fn rewrite_image<T: AsRef<str>>(wand: &mut MagickWand, rewrite_info: &Conver
         }
         _ => {
             // set image quality
-            wand.set_image_compression_quality(quality as usize)?;
+            if let Some(quality) = quality {
+                wand.set_image_compression_quality(quality as usize)?;
+            }
 
             // write image
             wand.write_image(out_path.as_ref())?;
             Ok(())
-        },
+        }
     }
 }
 
@@ -331,6 +337,7 @@ const META_RATING: &str = "Xmp.xmp.Rating";
 const META_GPS_LAT: &str = "Exif.GPSInfo.GPSLatitude";
 const META_GPS_LON: &str = "Exif.GPSInfo.GPSLongitude";
 
+#[derive(Debug)]
 pub struct Inspection {
     pub path: PathBuf,
     pub format: String,
@@ -618,21 +625,14 @@ mod tests {
     }
 
     #[test]
-    fn get_core_metadata() {
-        let tags = vec![
-            String::from(META_DATETIME),
-            String::from(META_RATING),
-            String::from(META_GPS_LAT),
-            String::from(META_GPS_LON),
-        ];
+    fn inspection() {
+        prelude();
 
-        let path = Path::new("/Users/scryner/geota/IMGP2798.heic");
-        let (mime, vals) = tags_from_path(path, tags).unwrap();
+        let path = Path::new("sample.jpg");
+        let inspection = inspect_image_from_path(path)
+            .expect("Failed to inSpect image");
 
-        println!("mime: {}", mime);
-
-        for (k, v) in vals.iter() {
-            println!("{}: {}", k, v);
-        }
+        println!("inspection = {:#?}", inspection);
     }
+
 }
