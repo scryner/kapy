@@ -47,6 +47,10 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         ignore_geotag: bool,
 
+        /// Set just copy without rewrite
+        #[arg(long, default_value_t = false)]
+        just_copy: bool,
+
         /// Show what would do without copying/writing to destination
         #[arg(long, default_value_t = false)]
         dry_run: bool,
@@ -99,7 +103,7 @@ pub fn run() {
     let cred_path = cli.cred.as_deref().unwrap_or(default_cred_path.as_ref());
 
     match &cli.command {
-        Commands::Clone { from, to, ignore_geotag, dry_run,after } => {
+        Commands::Clone { from, to, ignore_geotag, just_copy, dry_run,after } => {
             if let Some(from) = from {
                 conf.set_import_from(from.clone());
             }
@@ -108,7 +112,7 @@ pub fn run() {
                 conf.set_import_to(to.clone());
             }
 
-            return clone::do_clone(conf, cred_path, *ignore_geotag, *dry_run, after.clone());
+            return clone::do_clone(conf, cred_path, *ignore_geotag, *just_copy, *dry_run, after.clone());
         }
         Commands::Clean => {
             return clean::do_clean(cred_path);

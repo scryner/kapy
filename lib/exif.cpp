@@ -39,6 +39,9 @@ exif_metadata_t* exif_metadata_new() {
 
 int exif_metadata_open(exif_metadata_t *self, const char *path) {
     try {
+        // enable bmff
+        Exiv2::enableBMFF(true);
+
         // read image from file
         self->priv->image = Exiv2::ImageFactory::open(path);
 

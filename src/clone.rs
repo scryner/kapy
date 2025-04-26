@@ -1,20 +1,21 @@
-use std::path::{Path, PathBuf};
-use std::{fs, process};
-use std::time::{SystemTime, UNIX_EPOCH};
-use anyhow::{anyhow, Result};
 use core::time::Duration;
+use std::{fs, process};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, LocalResult, NaiveDateTime, TimeZone};
 use console::style;
 use regex::Regex;
-use walkdir::{WalkDir, DirEntry};
+use walkdir::{DirEntry, WalkDir};
 
-use crate::processor::gps::{GpsSearch, GpxStorage, NoopGpsSearch};
-use crate::drive::GoogleDrive;
-use crate::drive::auth::{CredPath, GoogleAuthenticator, ListenPort};
 use crate::config::Config;
+use crate::drive::auth::{CredPath, GoogleAuthenticator, ListenPort};
+use crate::drive::GoogleDrive;
 use crate::processor;
-use crate::processor::{CloneStatistics, CloneState, image};
+use crate::processor::{CloneState, CloneStatistics, image};
+use crate::processor::gps::{GpsSearch, GpxStorage, NoopGpsSearch};
 use crate::processor::image::Inspection;
 use crate::progress::{PanelType, Progress, Update};
 
@@ -22,7 +23,7 @@ const MAX_DEPTH: usize = 10;
 const DEFAULT_MAX_SEARCH_FILES_ON_GOOGLE_DRIVE: usize = 100;
 const DEFAULT_GPS_MATCH_WITHIN: Duration = Duration::from_secs(5 * 60); // match within 5 min
 
-pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bool, after: Option<String>) {
+pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, just_copy: bool, dry_run: bool, after: Option<String>) {
     // print info
     let import_from = conf.import_from().to_str().unwrap();
     let import_to = conf.import_to().to_str().unwrap();
@@ -106,7 +107,8 @@ pub fn do_clone(conf: Config, cred_path: &Path, ignore_geotag: bool, dry_run: bo
                     inspections.push(inspection);
                 }
                 Err(e) => {
-                    eprintln!("Failed to inspection image '{}': {}", path_str, e);
+                    panic!("Failed to inspection image '{}': {}", path_str, e);
+                    // eprintln!("Failed to inspection image '{}': {}", path_str, e);
                     inspection_failed += 1;
                 }
             };
